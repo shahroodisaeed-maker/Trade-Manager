@@ -1,0 +1,1071 @@
+import React, { useState, useEffect } from 'react';
+import { Habit, DayTask, GeneralReminder } from '../types';
+import { 
+  Plus, Check, Trash2, Calendar, Clock, Bell, 
+  BellRing, Award, ShieldAlert, Sparkles, AlertTriangle, X,
+  Activity, ArrowLeft, ArrowRight, Zap, Info
+} from 'lucide-react';
+
+interface HabitsSectionProps {
+  habits: Habit[];
+  tasks: DayTask[];
+  reminders: GeneralReminder[];
+  onAddHabit: (
+    title: string, 
+    frequency: 'daily' | 'weekly',
+    time?: string,
+    deadlineTime?: string,
+    alarmType?: 'math' | 'normal' | 'notification' | 'none'
+  ) => void;
+  onToggleHabit: (id: string, date: string) => void;
+  onDeleteHabit: (id: string) => void;
+  onAddTask: (task: Omit<DayTask, 'id' | 'completed' | 'missed' | 'createdAt'>) => void;
+  onToggleTask: (id: string) => void;
+  onDeleteTask: (id: string) => void;
+  onAddReminder: (reminder: Omit<GeneralReminder, 'id' | 'completed'>) => void;
+  onToggleReminder: (id: string) => void;
+  onDeleteReminder: (id: string) => void;
+  darkMode?: boolean;
+}
+
+export default function HabitsSection({
+  habits,
+  tasks,
+  reminders,
+  onAddHabit,
+  onToggleHabit,
+  onDeleteHabit,
+  onAddTask,
+  onToggleTask,
+  onDeleteTask,
+  onAddReminder,
+  onToggleReminder,
+  onDeleteReminder,
+  darkMode = false
+}: HabitsSectionProps) {
+  // Habit registration state
+  const [habitTitle, setHabitTitle] = useState('');
+  const [habitTime, setHabitTime] = useState('');
+  const [habitDeadlineTime, setHabitDeadlineTime] = useState('');
+  const [habitAlarmSelection, setHabitAlarmSelection] = useState<'none' | 'notification' | 'normal' | 'math'>('none');
+  
+  // Task registration state
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDay, setTaskDay] = useState<'today' | 'tomorrow'>('today');
+  const [taskTime, setTaskTime] = useState('');
+  const [alarmSelection, setAlarmSelection] = useState<'none' | 'notification' | 'normal' | 'math'>('none');
+  const [deadlineTime, setDeadlineTime] = useState('');
+
+  // Reminder state
+  const [remTitle, setRemTitle] = useState('');
+  const [remDate, setRemDate] = useState('');
+  const [remTime, setRemTime] = useState('');
+
+  // Performance Month Selection state (defaults to May 2026)
+  const [selectedMonth, setSelectedMonth] = useState('2026-05');
+
+  // Alarm simulation active overlays
+  const [mathAlarmTask, setMathAlarmTask] = useState<DayTask | null>(null);
+  const [normalAlarmTask, setNormalAlarmTask] = useState<DayTask | null>(null);
+  const [activeNotification, setActiveNotification] = useState<{ id: string; title: string; desc: string } | null>(null);
+
+  // Math puzzle state
+  const [mathNum1, setMathNum1] = useState(12);
+  const [mathNum2, setMathNum2] = useState(7);
+  const [mathUserAnswer, setMathUserAnswer] = useState('');
+  const [solvedCount, setSolvedCount] = useState(0);
+  const [emergencyConfirm, setEmergencyConfirm] = useState(false);
+
+  // Auto-check deadlines based on current date & time
+  useEffect(() => {
+    const checkOverdueAndAlerts = () => {
+      const now = new Date();
+      const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      tasks.forEach(t => {
+        // Mark failed
+        if (!t.completed && !t.missed && t.day === 'today' && t.deadlineTime) {
+          if (currentHourMin > t.deadlineTime) {
+            t.missed = true;
+          }
+        }
+      });
+    };
+    const interval = setInterval(checkOverdueAndAlerts, 15000);
+    return () => clearInterval(interval);
+  }, [tasks]);
+
+  // Generate a math question
+  const generateMathQuestion = () => {
+    const n1 = Math.floor(Math.random() * 80) + 11;
+    const n2 = Math.floor(Math.random() * 7) + 3;
+    setMathNum1(n1);
+    setMathNum2(n2);
+    setMathUserAnswer('');
+  };
+
+  // Turn Alarm sound/simulation on
+  const handleTriggerAlarm = (task: DayTask) => {
+    const type = task.alarmType || 'none';
+    if (type === 'math') {
+      setMathAlarmTask(task);
+      setSolvedCount(0);
+      generateMathQuestion();
+    } else if (type === 'normal') {
+      setNormalAlarmTask(task);
+    } else if (type === 'notification') {
+      setActiveNotification({
+        id: task.id,
+        title: 'اعلان صوتی تمرکزی فانی (Local Notification)',
+        desc: `زمان انجام تسک فرا رسید: ${task.title}`
+      });
+    } else {
+      alert(`کار شروع شد: ${task.title}`);
+    }
+
+    // Play synthesized pitch
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5 pitch
+      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    } catch (e) {}
+  };
+
+  // Submit Answer to puzzle
+  const handleVerifyAnswer = (e: React.FormEvent) => {
+    e.preventDefault();
+    const correctVal = mathNum1 * mathNum2;
+    if (parseInt(mathUserAnswer, 10) === correctVal) {
+      const nextCount = solvedCount + 1;
+      setSolvedCount(nextCount);
+      if (nextCount >= 2) {
+        setMathAlarmTask(null);
+        alert('مسائل ریاضی با موفقیت حل شدند! زنگ خواب‌شکن خاموش گردید.');
+      } else {
+        generateMathQuestion();
+      }
+    } else {
+      alert('پاسخ اشتباه است! تفکر کنید و مجدداً حساب کنید.');
+      setMathUserAnswer('');
+    }
+  };
+
+  const handleAddHabitSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!habitTitle.trim()) return;
+    onAddHabit(
+      habitTitle.trim(),
+      'daily',
+      habitTime || undefined,
+      habitDeadlineTime || undefined,
+      habitAlarmSelection
+    );
+    setHabitTitle('');
+    setHabitTime('');
+    setHabitDeadlineTime('');
+    setHabitAlarmSelection('none');
+  };
+
+  const handleAddTaskSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim()) return;
+    onAddTask({
+      title: taskTitle.trim(),
+      day: taskDay,
+      time: taskTime || undefined,
+      hasAlarm: alarmSelection !== 'none',
+      alarmType: alarmSelection,
+      deadlineTime: deadlineTime || undefined
+    });
+    setTaskTitle('');
+    setTaskTime('');
+    setAlarmSelection('none');
+    setDeadlineTime('');
+  };
+
+  const handleAddRemSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!remTitle.trim() || !remDate || !remTime) return;
+    onAddReminder({
+      title: remTitle.trim(),
+      date: remDate,
+      time: remTime
+    });
+    setRemTitle('');
+    setRemDate('');
+    setRemTime('');
+  };
+
+  // Current YYYY-MM-DD
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const totalHabits = habits.length;
+  const completedHabitsToday = habits.filter(h => h.history[todayISO]).length;
+  const habitCompletionRate = totalHabits > 0 
+    ? Math.round((completedHabitsToday / totalHabits) * 100) 
+    : 0;
+
+  // Render Days of the Selected Month dynamically
+  const getDaysInSelectedMonth = () => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const date = new Date(year, month, 0); // Last date of prior month is days count
+    return date.getDate();
+  };
+
+  const renderMonthPerformanceGrid = () => {
+    const daysCount = getDaysInSelectedMonth();
+    const list = Array.from({ length: daysCount }, (_, i) => i + 1);
+
+    const totalOnEachDay = habits.length;
+
+    // Compute actual daily success rates (0.0 to 1.0)
+    const dailyRates = list.map(dayNum => {
+      const dayStr = dayNum.toString().padStart(2, '0');
+      const targetDateStr = `${selectedMonth}-${dayStr}`;
+      const completedOnThisDay = habits.filter(h => h.history[targetDateStr]).length;
+      return totalOnEachDay > 0 ? (completedOnThisDay / totalOnEachDay) : 0;
+    });
+
+    // Compute weekly averages dynamically
+    const weeks = [
+      { name: 'هفته اول', days: [1, 2, 3, 4, 5, 6, 7] },
+      { name: 'هفته دوم', days: [8, 9, 10, 11, 12, 13, 14] },
+      { name: 'هفته سوم', days: [15, 16, 17, 18, 19, 20, 21] },
+      { name: 'هفته چهارم', days: [22, 23, 24, 25, 26, 27, 28] },
+      { name: 'هفته پنجم', days: [29, 30, 31].filter(d => d <= daysCount) }
+    ];
+
+    const weeklyAverages = weeks.map(w => {
+      const dayRatesForWeek = w.days.map(d => dailyRates[d - 1] || 0);
+      const avg = dayRatesForWeek.reduce((sum, r) => sum + r, 0) / Math.max(1, dayRatesForWeek.length);
+      return {
+        name: w.name,
+        percentage: Math.round(avg * 100) || 0
+      };
+    });
+
+    // Generate SVG Sparkline points for continuous daily progress trend chart
+    const graphWidth = 280;
+    const graphHeight = 44;
+    const pointsCoord = dailyRates.map((rate, idx) => {
+      const x = (idx / (daysCount - 1)) * graphWidth;
+      const y = graphHeight - (rate * (graphHeight - 6)) - 3;
+      return `${x},${y}`;
+    });
+    const polylinePoints = pointsCoord.join(' ');
+    const areaPoints = `0,${graphHeight} ${polylinePoints} ${graphWidth},${graphHeight}`;
+
+    return (
+      <div className="space-y-4 text-right">
+        {/* Month Selector Dropdown */}
+        <div className="flex items-center justify-between gap-1 border-b border-indigo-150/10 pb-2">
+          <span className="text-[10px] text-slate-450 font-extrabold flex items-center gap-1">
+            <Activity size={12} className="text-indigo-400" /> بایگانی و تقویم فرآیند عادات
+          </span>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className={`text-[10px] font-bold p-1 bg-transparent border-b focus:outline-none ${
+              darkMode ? 'text-indigo-300 border-slate-700 bg-slate-900' : 'text-slate-800 border-zinc-200 bg-white'
+            }`}
+          >
+            <option value="2026-12">آذر ۱۴۰۵ (December 2026)</option>
+            <option value="2026-11">آبان ۱۴۰۵ (November 2026)</option>
+            <option value="2026-10">مهر ۱۴۰۵ (October 2026)</option>
+            <option value="2026-09">شهریور ۱۴۰۵ (September 2026)</option>
+            <option value="2026-08">مرداد ۱۴۰۵ (August 2026)</option>
+            <option value="2026-07">تیر ۱۴۰۵ (July 2026)</option>
+            <option value="2026-06">خرداد ۱۴۰۵ (June 2026)</option>
+            <option value="2026-05">اردیبهشت ۱۴۰۵ (May 2026)</option>
+            <option value="2026-04">فروردین ۱۴۰۵ (April 2026)</option>
+            <option value="2026-03">اسفند ۱۴۰۴ (March 2026)</option>
+            <option value="2026-02">بهمن ۱۴۰۴ (February 2026)</option>
+            <option value="2026-01">دی ۱۴۰۴ (January 2026)</option>
+            <option value="2025-12">آذر ۱۴۰۴ (December 2025)</option>
+            <option value="2025-11">آبان ۱۴۰۴ (November 2025)</option>
+            <option value="2025-10">مهر ۱۴۰۴ (October 2025)</option>
+          </select>
+        </div>
+
+        {/* Dynamic Weekly Performance Trend - BOXES layout requested by user */}
+        <div className="grid grid-cols-5 gap-1 pt-1">
+          {weeklyAverages.map((wk, idx) => {
+            const isHigh = wk.percentage >= 70;
+            const isLow = wk.percentage < 40;
+            return (
+              <div 
+                key={idx} 
+                className={`p-1.5 border rounded-lg text-center transition-all ${
+                  darkMode 
+                    ? 'bg-slate-950/40 border-slate-850' 
+                    : 'bg-slate-50 border-zinc-150'
+                }`}
+              >
+                <div className="text-[8px] text-slate-450 font-bold truncate">{wk.name}</div>
+                <div className={`text-xs font-bold font-mono tracking-tight mt-0.5 ${
+                  isHigh ? 'text-indigo-500' : isLow ? 'text-rose-500' : 'text-amber-500'
+                }`}>
+                  {wk.percentage}%
+                </div>
+                <div className="w-full bg-slate-200/40 h-0.5 rounded-full mt-1 overflow-hidden">
+                  <div 
+                    className={`h-full ${isHigh ? 'bg-indigo-500' : isLow ? 'bg-rose-500' : 'bg-amber-500'}`} 
+                    style={{ width: `${wk.percentage}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Dynamic SVG Sparkline Line Chart of Daily Progress rates - requested by user */}
+        <div className={`p-2.5 border rounded-xl flex flex-col justify-between ${
+          darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-zinc-50/50 border-zinc-100'
+        }`}>
+          <div className="flex justify-between items-center text-[8px] text-slate-400 font-bold pb-1">
+            <span>روند خطی پیشرفت روز‌های ماه</span>
+            <span className="font-mono text-indigo-455">نوسان عملکرد</span>
+          </div>
+          
+          <div className="relative w-full h-11" dir="ltr">
+            <svg className="w-full h-full" viewBox={`0 0 ${graphWidth} ${graphHeight}`}>
+              {/* Grid Lines */}
+              <line x1="0" y1={graphHeight/2} x2={graphWidth} y2={graphHeight/2} stroke={darkMode ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)"} />
+              
+              {/* Shaded Area */}
+              <polygon
+                points={areaPoints}
+                className={darkMode ? "fill-indigo-500/10" : "fill-indigo-100/45"}
+              />
+              {/* Continuous Trend Line */}
+              <polyline
+                fill="none"
+                stroke="#6366f1"
+                strokeWidth="1.5"
+                points={polylinePoints}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {/* Markers for days */}
+              {dailyRates.map((rate, i) => {
+                const x = (i / (daysCount - 1)) * graphWidth;
+                const y = graphHeight - (rate * (graphHeight - 6)) - 3;
+                return (
+                  <circle
+                    key={i}
+                    cx={x}
+                    cy={y}
+                    r="1.5"
+                    className="fill-indigo-600 hover:r-3.5 transition-all text-white"
+                    style={{ cursor: 'pointer' }}
+                  />
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+
+        {/* Traditional Heat-map visual grid for chosen month */}
+        <div className="space-y-1.5">
+          <div className="text-[8px] text-slate-500 font-bold">نقشه حرارتی فعالیت کل ماه:</div>
+          <div className="grid grid-cols-7 gap-1" dir="ltr">
+            {list.map(dayNum => {
+              const dayStr = dayNum.toString().padStart(2, '0');
+              const targetDateStr = `${selectedMonth}-${dayStr}`;
+              
+              const completedOnThisDay = habits.filter(h => h.history[targetDateStr]).length;
+              const rate = totalOnEachDay > 0 ? (completedOnThisDay / totalOnEachDay) : 0;
+
+              let bgColor = 'bg-slate-100'; 
+              let tooltip = `روز ${dayNum}ام: بدون فعالیت`;
+
+              if (darkMode) {
+                bgColor = 'bg-slate-950 border border-slate-900';
+              }
+
+              if (totalOnEachDay > 0) {
+                if (rate === 0) {
+                  bgColor = darkMode ? 'bg-rose-950/20 border border-rose-900/30 text-rose-500' : 'bg-rose-50 border border-rose-100/40 text-rose-600';
+                  tooltip = `روز ${dayNum}ام: درصد موفقیت ۰٪`;
+                } else if (rate <= 0.4) {
+                  bgColor = 'bg-indigo-100 text-indigo-700';
+                  tooltip = `روز ${dayNum}ام: درصد موفقیت ${Math.round(rate * 100)}٪`;
+                } else if (rate <= 0.7) {
+                  bgColor = 'bg-indigo-300 text-indigo-950';
+                  tooltip = `روز ${dayNum}ام: درصد موفقیت ${Math.round(rate * 100)}٪`;
+                } else {
+                  bgColor = 'bg-indigo-600 text-white';
+                  tooltip = `روز ${dayNum}ام: درصد موفقیت ۱۰۰٪ کامل`;
+                }
+              }
+
+              return (
+                <div 
+                  key={dayNum} 
+                  className={`h-5 rounded flex items-center justify-center text-[7px] font-mono font-bold transition-all cursor-pointer select-none ${bgColor}`}
+                  title={tooltip}
+                >
+                  {dayNum}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center justify-between text-[8px] text-slate-400 mt-2 font-display">
+          <div className="flex gap-2">
+            <span className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-sm inline-block ${darkMode ? 'bg-slate-950 border border-slate-900' : 'bg-slate-100'}`} /> صفر درصد
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm bg-indigo-300 inline-block" /> ۴۰ تا ۷۰ درصد
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm bg-indigo-600 inline-block" /> ۱۰۰٪ کامل
+            </span>
+          </div>
+          <span className="font-mono text-[9px] font-bold text-slate-450">{selectedMonth}</span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6" dir="rtl">
+      
+      {/* Floating browser-like Notification alert toast is triggered */}
+      {activeNotification && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900 text-white rounded-xl shadow-2xl p-4 border border-slate-800 animate-slide-up flex gap-3 items-start font-sans">
+          <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+            <BellRing size={16} className="animate-bounce" />
+          </div>
+          <div className="flex-1 text-right">
+            <h4 className="text-xs font-bold leading-tight">{activeNotification.title}</h4>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{activeNotification.desc}</p>
+          </div>
+          <button 
+            onClick={() => setActiveNotification(null)}
+            className="text-slate-450 hover:text-white transition-colors cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Math Alarm modal ringtone popup overlay */}
+      {mathAlarmTask && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className={`rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-5 animate-pulse border ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
+          }`}>
+            <div className="flex justify-center text-indigo-500">
+              <BellRing size={52} className="animate-bounce" />
+            </div>
+            
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">وضعیت زنگ حشاش</span>
+              <h3 className="text-lg font-extrabold">زنگ هوشمند ریاضی: {mathAlarmTask.title}</h3>
+              <p className="text-xs text-slate-400">سطح چالش: محاسبات ضرب دو رقمی خواب‌شکن</p>
+            </div>
+
+            <div className={`p-4 rounded-2xl border space-y-3 ${
+              darkMode ? 'bg-slate-950 border-slate-850' : 'bg-zinc-50 border-zinc-150'
+            }`}>
+              <p className="text-xs text-slate-450 leading-relaxed font-semibold">
+                جهت متوقف ساختن صدای آلارم باید پاسخ صحیح را محاسبه کنید! ({solvedCount} از ۲ مرحله برطرف شده)
+              </p>
+
+              <form onSubmit={handleVerifyAnswer} className="space-y-3">
+                <div className="text-xl font-bold font-mono tracking-wider text-indigo-500" dir="ltr">
+                  {mathNum1} × {mathNum2} = ؟
+                </div>
+
+                <input 
+                  type="number"
+                  placeholder="پاسخ را بنویسید"
+                  required
+                  autoFocus
+                  value={mathUserAnswer}
+                  onChange={(e) => setMathUserAnswer(e.target.value)}
+                  className={`w-full p-2.5 rounded-xl text-center font-mono focus:outline-none text-base border ${
+                    darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
+                  }`}
+                />
+
+                <button 
+                  type="submit"
+                  className="w-full h-10 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+                >
+                  تأیید پاسخ و قطع خواب‌شکن
+                </button>
+              </form>
+            </div>
+
+            {emergencyConfirm ? (
+              <div className="flex flex-col items-center gap-1 bg-slate-900/40 p-2 rounded-xl border border-slate-800" dir="rtl">
+                <span className="text-[9px] text-rose-450 font-bold">زنگ خاموش شود؟ (این کار باعث کاهش درصد تعهد می‌شود)</span>
+                <div className="flex items-center gap-3 mt-1">
+                  <button 
+                    onClick={() => {
+                      setMathAlarmTask(null);
+                      setEmergencyConfirm(false);
+                    }}
+                    className="text-[9px] text-rose-500 hover:text-rose-400 font-bold underline cursor-pointer"
+                  >
+                    بله، قطع شود
+                  </button>
+                  <button 
+                    onClick={() => setEmergencyConfirm(false)}
+                    className="text-[9px] text-slate-400 hover:text-slate-300 underline cursor-pointer"
+                  >
+                    انصراف
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setEmergencyConfirm(true)}
+                className="text-[10px] text-slate-505 hover:text-slate-400 underline cursor-pointer"
+              >
+                متوقف کردن اضطراری زنگ
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Normal Alarm modal ringtone popup overlay */}
+      {normalAlarmTask && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className={`rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-5 animate-pulse border ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
+          }`}>
+            <div className="flex justify-center text-indigo-500">
+              <Bell size={52} className="animate-bounce" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">زنگ هشدار معمولی</span>
+              <h3 className="text-lg font-extrabold">زنگ یادآوری تسک: {normalAlarmTask.title}</h3>
+              <p className="text-xs text-slate-400 font-mono">ساعت تنظیم شده: {normalAlarmTask.time || '--:--'}</p>
+            </div>
+
+            <div className={`p-5 rounded-2xl border space-y-3 ${
+              darkMode ? 'bg-slate-950 border-slate-850' : 'bg-zinc-55 border-zinc-150'
+            }`}>
+              <p className="text-xs text-slate-450 leading-relaxed">
+                مدت زمان یادآوری نهایی فرا رسیده است. لطفاً اقدام متناسب را اجرا کنید.
+              </p>
+              
+              <button
+                type="button"
+                onClick={() => setNormalAlarmTask(null)}
+                className="w-full h-11 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+              >
+                متوجه شدم و خاموش کن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grid structure */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Module 1: Daily Habits List & Completion stats */}
+        <div className={`p-5 border rounded-2xl shadow-sm space-y-4 flex flex-col justify-between transition-colors ${
+          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-150'
+        }`}>
+          <div className="space-y-4">
+            <div className={`border-b pb-2 flex justify-between items-center ${
+              darkMode ? 'border-slate-800' : 'border-slate-100'
+            }`}>
+              <h3 className="text-sm font-bold font-display">تسک و عادات همیشگی روزانه</h3>
+              <span className="text-[10px] text-slate-400 font-mono">امروز: {todayISO}</span>
+            </div>
+
+            {/* Quick Completion Stats */}
+            <div className={`p-3.5 border rounded-xl flex items-center justify-between transition-colors ${
+              darkMode ? 'bg-slate-950/60 border-slate-850' : 'bg-zinc-50 border-zinc-100'
+            }`}>
+              <div>
+                <span className="text-[10px] text-slate-450 font-semibold block">پیشرفت کل عادات امروز</span>
+                <span className="text-xs text-slate-400">{completedHabitsToday} از {totalHabits} عادت تکراری</span>
+              </div>
+              <div className="text-right">
+                <span className="text-lg font-bold text-indigo-500 font-mono">{habitCompletionRate}%</span>
+              </div>
+            </div>
+
+            {/* Habit registry Form */}
+            <form onSubmit={handleAddHabitSubmit} className="space-y-2 border-b pb-3 border-indigo-100/10">
+              <div className="flex gap-1.5">
+                <input 
+                  type="text" 
+                  placeholder="ثبت عادت جدید، مثلا: بیدارباش ۶ صبح"
+                  value={habitTitle}
+                  onChange={(e) => setHabitTitle(e.target.value)}
+                  className={`flex-1 p-2 border rounded-lg text-xs focus:outline-none focus:border-indigo-500 ${
+                    darkMode ? 'bg-slate-900 border-slate-700 text-white font-sans' : 'bg-white border-zinc-200 text-slate-905'
+                  }`}
+                />
+                <button 
+                  type="submit"
+                  className="px-3.5 bg-indigo-650 hover:bg-indigo-755 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                >
+                  افزودن
+                </button>
+              </div>
+
+              {/* Extra Optional fields for Habit */}
+              <div className="grid grid-cols-3 gap-1 text-[9px]">
+                <div>
+                  <label className="block text-slate-450 mb-0.5">ساعت انجام</label>
+                  <input 
+                    type="time" 
+                    value={habitTime}
+                    onChange={(e) => setHabitTime(e.target.value)}
+                    className={`w-full p-1 border rounded focus:outline-none font-mono ${
+                      darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-950'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-450 mb-0.5">ددلاین نهایی</label>
+                  <input 
+                    type="time" 
+                    value={habitDeadlineTime}
+                    onChange={(e) => setHabitDeadlineTime(e.target.value)}
+                    className={`w-full p-1 border rounded focus:outline-none font-mono ${
+                      darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-950'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-450 mb-0.5">نوع زنگ خواب‌شکن</label>
+                  <select
+                    value={habitAlarmSelection}
+                    onChange={(e: any) => setHabitAlarmSelection(e.target.value)}
+                    className={`w-full p-1 border rounded focus:outline-none font-sans ${
+                      darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-705'
+                    }`}
+                  >
+                    <option value="none" className={darkMode ? 'bg-slate-900' : ''}>بدون آلارم</option>
+                    <option value="notification" className={darkMode ? 'bg-slate-900' : ''}>اعلان وبسایت</option>
+                    <option value="normal" className={darkMode ? 'bg-slate-900' : ''}>زنگ معمولی</option>
+                    <option value="math" className={darkMode ? 'bg-slate-900 text-white' : ''}>زنگ ریاضی هوشمند</option>
+                  </select>
+                </div>
+              </div>
+            </form>
+
+            {/* Habits listing info */}
+            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-0.5">
+              {habits.length === 0 ? (
+                <div className="p-6 text-center text-slate-500 text-xs">تاکنون تسک عادتی تکرار شونده‌ای اضافه نکرده‌اید.</div>
+              ) : (
+                habits.map(h => {
+                  const isCompletedToday = !!h.history[todayISO];
+                  return (
+                    <div key={h.id} className={`flex items-center justify-between p-2.5 border rounded-xl hover:bg-slate-900/10 transition-all ${
+                      darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-slate-50/20 border-slate-100'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onToggleHabit(h.id, todayISO)}
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors cursor-pointer ${
+                            isCompletedToday 
+                              ? 'bg-indigo-600 border-indigo-600 text-white' 
+                              : (darkMode ? 'border-slate-700 bg-slate-900 hover:border-indigo-400' : 'border-zinc-300 bg-white hover:border-zinc-800')
+                          }`}
+                        >
+                          {isCompletedToday && <Check size={12} />}
+                        </button>
+                        
+                        <div>
+                          <div className={`text-xs ${
+                            isCompletedToday ? 'line-through text-slate-500' : (darkMode ? 'text-slate-250 font-semibold' : 'text-slate-700 font-medium')
+                          }`}>
+                            {h.title}
+                          </div>
+                          
+                          {/* Time, deadline, alarm specs for Habit */}
+                          {(h.time || h.deadlineTime || (h.alarmType && h.alarmType !== 'none')) && (
+                            <div className="flex items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
+                              {h.time && <span className="font-mono">{h.time}</span>}
+                              {h.deadlineTime && <span className="font-mono text-rose-500 font-bold">مهلت: {h.deadlineTime}</span>}
+                              {h.alarmType && h.alarmType !== 'none' && (
+                                <span className="text-indigo-400 font-bold flex items-center gap-0.5">
+                                  🔔 {h.alarmType === 'math' ? 'ریاضی' : h.alarmType === 'normal' ? 'معمولی' : 'اعلان'}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {/* Simulation helper button for habit alarm */}
+                        {!isCompletedToday && h.alarmType && h.alarmType !== 'none' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerAlarm(h as any)}
+                            className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
+                              darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-indigo-700 font-semibold'
+                            }`}
+                            title="تست زنگ هشدار عادت"
+                          >
+                            <BellRing size={10} />
+                          </button>
+                        )}
+
+                        <button 
+                          onClick={() => onDeleteHabit(h.id)}
+                          className={`p-1 rounded transition-colors cursor-pointer ${
+                            darkMode ? 'text-slate-500 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Minimalist Grid indicator showing dynamic monthly performance calendar */}
+          <div className={`pt-3 border-t transition-colors ${darkMode ? 'border-slate-800' : 'border-zinc-100'}`}>
+            {renderMonthPerformanceGrid()}
+          </div>
+        </div>
+
+        {/* Module 2: Today and Tomorrow tasks list & alarms scheduler */}
+        <div className={`lg:col-span-2 p-5 border rounded-2xl shadow-sm space-y-4 transition-colors ${
+          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-150'
+        }`}>
+          <div className={`border-b pb-2 flex justify-between items-center ${
+            darkMode ? 'border-slate-800' : 'border-zinc-105'
+          }`}>
+            <h3 className="text-sm font-bold font-display">برنامه‌ریزی تسک‌ها (امروز و فردا)</h3>
+            <span className="text-[10px] text-slate-450 leading-tight select-none">همراه با ددلاین و شبیه‌ساز نوع هشدار تسک</span>
+          </div>
+
+          {/* Tasks addition Form mapping dynamic alarms dropdown selectors */}
+          <form onSubmit={handleAddTaskSubmit} className={`grid grid-cols-1 md:grid-cols-3 gap-2.5 p-3.5 rounded-xl text-xs ${
+            darkMode ? 'bg-slate-950/40 border border-slate-850' : 'bg-zinc-50 border-zinc-100'
+          }`}>
+            <div className="md:col-span-3 flex justify-between border-b pb-1 mt-0.5 items-center border-indigo-100/10">
+              <span className="font-semibold text-slate-400 text-[10px]">یادداشت وظیفه کاری تعیین زمان شده</span>
+              <div className="flex border rounded-lg p-0.5" dir="ltr">
+                <button 
+                  type="button"
+                  onClick={() => setTaskDay('today')}
+                  className={`px-2.5 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
+                    taskDay === 'today' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                  }`}
+                >
+                  برای امروز (Today)
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setTaskDay('tomorrow')}
+                  className={`px-2.5 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
+                    taskDay === 'tomorrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                  }`}
+                >
+                  برای فردا (Tomorrow)
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-slate-450 mb-1">شرح کار / وظیفه *</label>
+              <input 
+                type="text" 
+                placeholder="مثلا: تحلیل کندل‌استیک روزانه دلار"
+                required
+                value={taskTitle} 
+                onChange={(e) => setTaskTitle(e.target.value)}
+                className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 text-xs ${
+                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200'
+                }`} 
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-450 mb-1">ساعت انجام (اختیاری)</label>
+              <input 
+                type="time" 
+                value={taskTime} 
+                onChange={(e) => setTaskTime(e.target.value)}
+                className={`w-full p-2 border rounded-lg focus:outline-none font-mono text-xs ${
+                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
+                }`} 
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-450 mb-1">ساعت ددلاین نهایی (تخریب تسک)</label>
+              <input 
+                type="time" 
+                value={deadlineTime} 
+                onChange={(e) => setDeadlineTime(e.target.value)}
+                className={`w-full p-2 border rounded-lg focus:outline-none font-mono text-xs ${
+                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
+                }`} 
+                placeholder="18:00"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-slate-450 mb-1">نوع هشدار آلارم تلفن *</label>
+              <select
+                value={alarmSelection}
+                onChange={(e: any) => setAlarmSelection(e.target.value)}
+                className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-550 text-xs ${
+                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-700'
+                }`}
+              >
+                <option value="none" className={darkMode ? 'bg-slate-900' : ''}>بدون آلارم (none)</option>
+                <option value="notification" className={darkMode ? 'bg-slate-900' : ''}>فقط نوتیفکشن حبابی (Notification)</option>
+                <option value="normal" className={darkMode ? 'bg-slate-900' : ''}>زنگ خواب‌شکن معمولی (Normal Alarm)</option>
+                <option value="math" className={darkMode ? 'bg-slate-900' : ''}>زنگ ریاضی هوشمند خواب‌شکن قطعی (Math Puzzle Alarm)</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-3 flex justify-end pt-1">
+              <button 
+                type="submit"
+                className="px-5 py-2 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors cursor-pointer shadow-sm text-xs"
+              >
+                ذخیره کار تعیین زمان شده
+              </button>
+            </div>
+          </form>
+
+          {/* Render Active Cards with Today and Tomorrow tasks */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
+            
+            {/* TODAY COLUMN */}
+            <div className={`p-3 border rounded-xl transition-colors ${
+              darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-zinc-50/20 border-zinc-150'
+            }`}>
+              <h4 className={`text-xs font-bold border-b pb-1 mb-2 ${darkMode ? 'text-slate-300 border-slate-800' : 'text-slate-800 border-zinc-100'}`}>لیست کارهای امروز</h4>
+              <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+                {tasks.filter(t => t.day === 'today').length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای امروز ثبت نشده است.</div>
+                ) : (
+                  tasks.filter(t => t.day === 'today').map(task => (
+                    <div 
+                      key={task.id} 
+                      className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                        task.completed 
+                          ? (darkMode ? 'bg-slate-900/60 border-slate-850 opacity-50' : 'bg-slate-50 border-slate-100 opacity-60')
+                          : task.missed 
+                            ? 'bg-red-500/10 border-red-550/20 text-rose-500' 
+                            : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200')
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onToggleTask(task.id)}
+                          className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+                            task.completed 
+                              ? 'bg-indigo-650 border-indigo-600 text-white' 
+                              : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-350 bg-white hover:border-zinc-850')
+                          }`}
+                        >
+                          {task.completed && <Check size={10} />}
+                        </button>
+                        
+                        <div>
+                          <div className={`font-semibold ${task.completed ? 'line-through text-slate-500' : (darkMode ? 'text-slate-200' : 'text-slate-800')}`}>
+                            {task.title}
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
+                            {task.time && <span className="font-mono">ساعت {task.time}</span>}
+                            {task.deadlineTime && <span className="font-mono text-zinc-500 font-bold">مهلت: {task.deadlineTime}</span>}
+                            {task.alarmType && task.alarmType !== 'none' && (
+                              <span className="text-indigo-400 font-bold">
+                                • هشدار {task.alarmType === 'math' ? 'ریاضی' : task.alarmType === 'normal' ? 'معمولی' : 'اعلان حبابی'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {task.missed && (
+                          <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[9px] font-bold">
+                            ✖ منقضی
+                          </span>
+                        )}
+                        
+                        {!task.completed && !task.missed && task.alarmType && task.alarmType !== 'none' && (
+                          <button
+                            onClick={() => handleTriggerAlarm(task)}
+                            className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
+                              darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-705'
+                            }`}
+                            title="شبیه‌سازی نواختن زنگ هشدار تنظیم گوشی"
+                          >
+                            <BellRing size={10} /> زنگ
+                          </button>
+                        )}
+
+                        <button 
+                          onClick={() => onDeleteTask(task.id)}
+                          className={`p-1 rounded transition-colors cursor-pointer ${
+                            darkMode ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* TOMORROW COLUMN */}
+            <div className={`p-3 border rounded-xl transition-colors ${
+              darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-zinc-50/20 border-zinc-150'
+            }`}>
+              <h4 className={`text-xs font-bold border-b pb-1 mb-2 ${darkMode ? 'text-slate-300 border-slate-800' : 'text-slate-800 border-zinc-100'}`}>لیست کارهای فردا</h4>
+              <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+                {tasks.filter(t => t.day === 'tomorrow').length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای فردا ثبت نشده است.</div>
+                ) : (
+                  tasks.filter(t => t.day === 'tomorrow').map(task => (
+                    <div 
+                      key={task.id} 
+                      className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                        task.completed 
+                          ? (darkMode ? 'bg-slate-900 border-slate-850 opacity-55' : 'bg-slate-50 border-slate-100 opacity-60')
+                          : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200')
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onToggleTask(task.id)}
+                          className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+                            task.completed 
+                              ? 'bg-indigo-650 border-indigo-600' 
+                              : (darkMode ? 'border-slate-700 bg-slate-950' : 'border-zinc-300 bg-white')
+                          }`}
+                        >
+                          {task.completed && <Check size={10} />}
+                        </button>
+                        
+                        <div>
+                          <div className={`font-semibold ${task.completed ? 'line-through text-slate-505' : (darkMode ? 'text-slate-205' : 'text-slate-800')}`}>
+                            {task.title}
+                          </div>
+                          <div className="flex items-center gap-1 text-[9px] text-slate-450 mt-0.5 font-mono">
+                            {task.time && <span>ساعت {task.time}</span>}
+                            {task.alarmType && task.alarmType !== 'none' && <span className="font-semibold text-indigo-400">• زنگ‌دار ({task.alarmType})</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={() => onDeleteTask(task.id)}
+                          className={`p-1 rounded transition-colors cursor-pointer ${
+                            darkMode ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Module 3: Historical Reminder Log */}
+          <div className={`pt-4 border-t transition-colors ${darkMode ? 'border-slate-800' : 'border-zinc-100'}`}>
+            <h4 className={`text-xs font-bold mb-3 ${darkMode ? 'text-slate-200' : 'text-zinc-800'}`}>سامانه یادآوری‌های زمانی اختصاصی (Reminders)</h4>
+            
+            <form onSubmit={handleAddRemSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
+              <input 
+                type="text" 
+                placeholder="عنوان مثل: تمدید سرور لینوکس"
+                required
+                value={remTitle}
+                onChange={(e) => setRemTitle(e.target.value)}
+                className={`md:col-span-2 p-2 border rounded-lg focus:outline-none focus:border-indigo-500 ${
+                  darkMode ? 'bg-slate-900 border-slate-700 text-white font-sans' : 'bg-white border-zinc-250 text-slate-805'
+                }`}
+              />
+              <input 
+                type="date" 
+                required
+                value={remDate}
+                onChange={(e) => setRemDate(e.target.value)}
+                className={`p-2 border rounded-lg focus:outline-none focus:border-indigo-501 ${
+                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-250 text-slate-805'
+                }`}
+              />
+              <div className="flex gap-1.51">
+                <input 
+                  type="time" 
+                  required
+                  value={remTime}
+                  onChange={(e) => setRemTime(e.target.value)}
+                  className={`w-1/2 p-2 border rounded-lg focus:outline-none font-mono text-center ${
+                    darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-250 text-slate-805'
+                  }`}
+                />
+                <button 
+                  type="submit"
+                  className="w-1/2 h-9 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg hover:bg-zinc-700 text-xs font-bold transition-all cursor-pointer shadow-sm mr-1.5"
+                >
+                  ثبت یادآوری
+                </button>
+              </div>
+            </form>
+
+            {/* List reminders */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs max-h-[140px] overflow-y-auto pt-2">
+              {reminders.map(rem => (
+                <div key={rem.id} className={`flex justify-between items-center p-2.5 border rounded-lg transition-colors ${
+                  darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-slate-50/20 border-zinc-100'
+                }`}>
+                  <div>
+                    <h5 className={`font-semibold ${darkMode ? 'text-slate-205' : 'text-slate-800'}`}>{rem.title}</h5>
+                    <span className="text-[9px] text-slate-450 font-mono" dir="ltr">{rem.date} {rem.time}</span>
+                  </div>
+                  <button 
+                    onClick={() => onDeleteReminder(rem.id)}
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      darkMode ? 'text-slate-550 hover:text-zinc-50' : 'text-slate-400 hover:text-zinc-650 hover:bg-slate-100'
+                    }`}
+                    title="حذف یادآور"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+}

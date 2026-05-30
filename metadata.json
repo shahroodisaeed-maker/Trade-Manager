@@ -1,0 +1,6 @@
+{
+  "name": "Zenith Workspace",
+  "description": "A modern offline-first dashboard combining Trading Journal, Focus Sessions, Financial Planning, Habits, Sticky Ideas, and entertainment tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
