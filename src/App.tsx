@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   TradeLog, ExpenseIncomeItem, AssetRecord, LoanItem, 
   DebtClaimItem, Habit, DayTask, GeneralReminder, StickyIdea, 
@@ -11,10 +11,12 @@ import HabitsSection from './components/HabitsSection';
 import IdeasSection from './components/IdeasSection';
 import GamesSection from './components/GamesSection';
 import SettingsSection from './components/SettingsSection';
+import DashboardSection from './components/DashboardSection';
 
 import { 
   BookOpen, Sparkles, DollarSign, Award, StickyNote, Gamepad2, 
-  Layers, Github, Compass, ToggleLeft, ToggleRight, Info, Sun, Moon, Sliders
+  Layers, Github, Compass, ToggleLeft, ToggleRight, Info, Sun, Moon, Sliders, LayoutGrid,
+  Bell, BellRing, X, Clock
 } from 'lucide-react';
 
 import { Preferences } from '@capacitor/preferences';
@@ -22,7 +24,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapacitorApp } from '@capacitor/app';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'journal' | 'focus' | 'financial' | 'habits' | 'ideas' | 'games' | 'settings'>('journal');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'journal' | 'focus' | 'financial' | 'habits' | 'ideas' | 'games' | 'settings'>('dashboard');
 
   // Dark Mode State with localStorage persistence
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -139,6 +141,249 @@ export default function App() {
     ];
   });
 
+  // --- Global Alarm States ---
+  const [mathAlarmTask, setMathAlarmTask] = useState<DayTask | null>(null);
+  const [normalAlarmTask, setNormalAlarmTask] = useState<DayTask | null>(null);
+  const [activeNotification, setActiveNotification] = useState<{ id: string; title: string; desc: string } | null>(null);
+
+  // Math puzzle state
+  const [mathNum1, setMathNum1] = useState(12);
+  const [mathNum2, setMathNum2] = useState(7);
+  const [mathUserAnswer, setMathUserAnswer] = useState('');
+  const [solvedCount, setSolvedCount] = useState(0);
+  const [emergencyConfirm, setEmergencyConfirm] = useState(false);
+  const [rungIds, setRungIds] = useState<string[]>([]);
+
+  const alarmAudioIntervalRef = useRef<any>(null);
+  const alarmAudioCtxRef = useRef<any>(null);
+
+  // pre-init & unlock AudioContext on any screen touch/gesture to bypass browser user gesture blocks
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtxClass) {
+          if (!alarmAudioCtxRef.current) {
+            const ctx = new AudioCtxClass();
+            alarmAudioCtxRef.current = ctx;
+            if (ctx.state === 'suspended') {
+              ctx.resume().catch(() => {});
+            }
+          } else if (alarmAudioCtxRef.current.state === 'suspended') {
+            alarmAudioCtxRef.current.resume().catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Web Audio Context unlock deferred:', e);
+      }
+      
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
+
+  const startLoopingAlarmSound = () => {
+    if (alarmAudioIntervalRef.current) return;
+    try {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return;
+      
+      let ctx = alarmAudioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioCtxClass();
+        alarmAudioCtxRef.current = ctx;
+      }
+      
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const playDoubleBeep = () => {
+        if (!ctx || ctx.state === 'closed') return;
+        
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.frequency.setValueAtTime(1046.50, ctx.currentTime);
+        gain1.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc1.start(ctx.currentTime);
+        osc1.stop(ctx.currentTime + 0.2);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.frequency.setValueAtTime(1318.51, ctx.currentTime + 0.25);
+        gain2.gain.setValueAtTime(0.55, ctx.currentTime + 0.25);
+        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+        osc2.start(ctx.currentTime + 0.25);
+        osc2.stop(ctx.currentTime + 0.45);
+      };
+
+      playDoubleBeep();
+      alarmAudioIntervalRef.current = setInterval(playDoubleBeep, 1000);
+    } catch (err) {
+      console.warn('Failed to start looping alarm audio:', err);
+    }
+  };
+
+  const stopLoopingAlarmSound = () => {
+    if (alarmAudioIntervalRef.current) {
+      clearInterval(alarmAudioIntervalRef.current);
+      alarmAudioIntervalRef.current = null;
+    }
+    if (alarmAudioCtxRef.current && alarmAudioCtxRef.current.state === 'running') {
+      try {
+        alarmAudioCtxRef.current.suspend().catch(() => {});
+      } catch (e) {}
+    }
+  };
+
+  // Listen to active overlays and start/stop looping alarm sound
+  useEffect(() => {
+    if (mathAlarmTask || normalAlarmTask) {
+      startLoopingAlarmSound();
+    } else {
+      stopLoopingAlarmSound();
+    }
+    return () => {
+      stopLoopingAlarmSound();
+    };
+  }, [mathAlarmTask, normalAlarmTask]);
+
+  // Generate a math question
+  const generateMathQuestion = () => {
+    const n1 = Math.floor(Math.random() * 80) + 11;
+    const n2 = Math.floor(Math.random() * 7) + 3;
+    setMathNum1(n1);
+    setMathNum2(n2);
+    setMathUserAnswer('');
+  };
+
+  // Turn Alarm sound/simulation on
+  const handleTriggerAlarm = (task: DayTask) => {
+    const type = task.alarmType || 'none';
+    if (type === 'math') {
+      setMathAlarmTask(task);
+      setSolvedCount(0);
+      generateMathQuestion();
+    } else if (type === 'normal') {
+      setNormalAlarmTask(task);
+    } else if (type === 'notification') {
+      setActiveNotification({
+        id: task.id,
+        title: 'اعلان صوتی تمرکزی فانی (Local Notification)',
+        desc: `زمان انجام تسک فرا رسید: ${task.title}`
+      });
+    }
+
+    // Play synthesized pitch
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    } catch (e) {}
+  };
+
+  const handleTriggerHabitAlarm = (h: Habit) => {
+    const localTodayISO = new Date().toISOString().slice(0, 10);
+    const tempTask: DayTask = {
+      id: h.id,
+      title: `عادت: ${h.title}`,
+      day: 'today',
+      time: h.time,
+      alarmType: h.alarmType || 'none',
+      deadlineTime: h.deadlineTime,
+      completed: !!h.history[localTodayISO],
+      missed: false,
+      hasAlarm: !!(h.alarmType && h.alarmType !== 'none'),
+      createdAt: h.createdAt
+    };
+    handleTriggerAlarm(tempTask);
+  };
+
+  const handleVerifyAnswer = (e: React.FormEvent) => {
+    e.preventDefault();
+    const correctVal = mathNum1 * mathNum2;
+    if (parseInt(mathUserAnswer, 10) === correctVal) {
+      const nextCount = solvedCount + 1;
+      setSolvedCount(nextCount);
+      if (nextCount >= 2) {
+        setMathAlarmTask(null);
+        alert('مسائل ریاضی با موفقیت حل شدند! زنگ خواب‌شکن خاموش گردید.');
+      } else {
+        generateMathQuestion();
+      }
+    } else {
+      alert('پاسخ اشتباه است! تفکر کنید و مجدداً حساب کنید.');
+      setMathUserAnswer('');
+    }
+  };
+
+  // Foreground JS Timer-checker fallback
+  useEffect(() => {
+    const checkOverdueAndAlerts = () => {
+      const now = new Date();
+      const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      const localTodayISO = now.toISOString().slice(0, 10);
+      
+      // Update missed tasks if they passed the deadline time
+      tasks.forEach(t => {
+        if (!t.completed && !t.missed && t.day === 'today' && t.deadlineTime) {
+          if (currentHourMin > t.deadlineTime) {
+            t.missed = true;
+          }
+        }
+      });
+
+      // Automatically trigger alarm if current time matches scheduled time
+      tasks.forEach(t => {
+        if (!t.completed && !t.missed && t.day === 'today' && t.time && t.alarmType && t.alarmType !== 'none') {
+          if (currentHourMin === t.time && !rungIds.includes(t.id)) {
+            setRungIds(prev => [...prev, t.id]);
+            handleTriggerAlarm(t);
+          }
+        }
+      });
+
+      // Automatically trigger habits alarm if current time matches scheduled time
+      habits.forEach(h => {
+        const isCompleted = !!h.history[localTodayISO];
+        const isMissed = h.deadlineTime ? (currentHourMin > h.deadlineTime) : false;
+        
+        if (!isCompleted && !isMissed && h.time && h.alarmType && h.alarmType !== 'none') {
+          const habitKey = `${h.id}_${localTodayISO}`;
+          if (currentHourMin === h.time && !rungIds.includes(habitKey)) {
+            setRungIds(prev => [...prev, habitKey]);
+            handleTriggerHabitAlarm(h);
+          }
+        }
+      });
+    };
+
+    const interval = setInterval(checkOverdueAndAlerts, 10000);
+    return () => clearInterval(interval);
+  }, [tasks, habits, rungIds]);
+
   // Asynchronous persistent Capacitor Preference Loader
   useEffect(() => {
     const loadCapacitorData = async () => {
@@ -187,7 +432,7 @@ export default function App() {
       }
     };
 
-    // Request permissions for background notifications on load
+    // Request permissions for background notifications on load and setup listeners
     const requestNotificationPermission = async () => {
       try {
         const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
@@ -196,9 +441,66 @@ export default function App() {
           if (perm.display !== 'granted') {
             await LocalNotifications.requestPermissions();
           }
+
+          // Create standard high-priority alarm channel for Android
+          await LocalNotifications.createChannel({
+            id: 'zenith-alarms',
+            name: 'شدت مغناطیسی زنیت (Alarms)',
+            description: 'طنین بیدارباش‌های شناختی هوشمند زنیت',
+            importance: 5, // High/Max importance to wake phone and pop up
+            visibility: 1, // Visible on secure lockscreens
+            sound: 'beep.wav',
+            vibration: true,
+            lights: true
+          });
+
+          // Remove any previous hook listeners to avoid duplication during React mounts
+          try {
+            await LocalNotifications.removeAllListeners();
+          } catch (e) {}
+
+          // Add clicked notification handling (extremely durable when app is killed)
+          await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+            console.log('Local Notification Action Performed clicked:', action);
+            const extra = action.notification?.extra;
+            if (extra && extra.alarmType && extra.alarmType !== 'none') {
+              const tempTask: DayTask = {
+                id: extra.id || Date.now().toString(),
+                title: extra.title || 'بیدارباش زنیت',
+                day: 'today',
+                time: extra.time,
+                alarmType: extra.alarmType,
+                completed: false,
+                missed: false,
+                hasAlarm: true,
+                createdAt: ''
+              };
+              handleTriggerAlarm(tempTask);
+            }
+          });
+
+          // Handle foreground notification arrival with instant popup
+          await LocalNotifications.addListener('localNotificationReceived', (notification) => {
+            console.log('Local Notification Received in foreground:', notification);
+            const extra = notification.extra;
+            if (extra && extra.alarmType && extra.alarmType !== 'none') {
+              const tempTask: DayTask = {
+                id: extra.id || Date.now().toString(),
+                title: extra.title || 'بیدارباش زنیت',
+                day: 'today',
+                time: extra.time,
+                alarmType: extra.alarmType,
+                completed: false,
+                missed: false,
+                hasAlarm: true,
+                createdAt: ''
+              };
+              handleTriggerAlarm(tempTask);
+            }
+          });
         }
       } catch (err) {
-        console.warn('Notification permission failed or has been rejected:', err);
+        console.warn('Native local notification initialization failed or was rejected:', err);
       }
     };
 
@@ -314,7 +616,14 @@ export default function App() {
             id: numericId,
             schedule: { at: targetDate },
             sound: 'beep.wav',
-            actionTypeId: "OPEN_APP"
+            channelId: 'zenith-alarms',
+            extra: {
+              type: 'task',
+              id: task.id,
+              alarmType: task.alarmType,
+              title: task.title,
+              time: task.time
+            }
           });
         }
       });
@@ -367,8 +676,15 @@ export default function App() {
               body: `ساعت زمان‌بندی یادآور به صندوقچه رسید: ${rem.time}`,
               id: numericId,
               schedule: { at: targetDate },
-              sound: 'alert.wav',
-              actionTypeId: "OPEN_APP"
+              sound: 'beep.wav',
+              channelId: 'zenith-alarms',
+              extra: {
+                type: 'reminder',
+                id: rem.id,
+                alarmType: 'normal',
+                title: rem.title,
+                time: rem.time
+              }
             });
           }
         }
@@ -381,6 +697,77 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Failed to sync reminder notifications via Capacitor:', err);
+    }
+  };
+
+  // Sync background/system alarms for Habits
+  const syncHabitNotifications = async (currentHabits: Habit[]) => {
+    try {
+      const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+      if (!isCapacitor) return;
+
+      const pending = await LocalNotifications.getPending();
+      const habitsPending = pending.notifications.filter(n => n.id >= 300000 && n.id < 400000);
+      if (habitsPending.length > 0) {
+        await LocalNotifications.cancel({
+          notifications: habitsPending.map(n => ({ id: n.id }))
+        });
+      }
+
+      const now = new Date();
+      const localTodayISO = now.toISOString().slice(0, 10);
+      const toSchedule: any[] = [];
+
+      currentHabits.forEach((habit, index) => {
+        if (habit.alarmType && habit.alarmType !== 'none' && habit.time) {
+          const isCompletedToday = !!habit.history[localTodayISO];
+          
+          const targetDate = new Date();
+          const [hours, minutes] = habit.time.split(':').map(Number);
+          targetDate.setHours(hours, minutes, 0, 0);
+
+          if (isCompletedToday || targetDate <= now) {
+            targetDate.setDate(targetDate.getDate() + 1);
+          }
+
+          let numericId = 300000 + index;
+          if (!isNaN(Number(habit.id))) {
+            numericId = 300000 + parseInt(habit.id, 10);
+          } else {
+            let hash = 0;
+            for (let i = 0; i < habit.id.length; i++) {
+              hash = habit.id.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            numericId = 300000 + (Math.abs(hash) % 100000);
+          }
+
+          toSchedule.push({
+            title: "⏰ یادآور عادت: " + habit.title,
+            body: `نوبت استمرار عادت روزانه فرا رسید (${habit.time}) - نوع هشدار: ${
+              habit.alarmType === 'math' ? 'هوشمند محاسباتی ریاضی' : 'خواب‌شکن معمولی'
+            }`,
+            id: numericId,
+            schedule: { at: targetDate },
+            sound: 'beep.wav',
+            channelId: 'zenith-alarms',
+            extra: {
+              type: 'habit',
+              id: habit.id,
+              alarmType: habit.alarmType,
+              title: habit.title,
+              time: habit.time
+            }
+          });
+        }
+      });
+
+      if (toSchedule.length > 0) {
+        await LocalNotifications.schedule({
+          notifications: toSchedule
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to sync habit notifications via Capacitor:', err);
     }
   };
 
@@ -413,6 +800,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(KEYS.HABITS, JSON.stringify(habits));
     Preferences.set({ key: KEYS.HABITS, value: JSON.stringify(habits) }).catch(() => {});
+    syncHabitNotifications(habits);
   }, [habits]);
 
   useEffect(() => {
@@ -678,6 +1066,7 @@ export default function App() {
 
   // Sidebar navigation mapping helper
   const tabsConfig = [
+    { key: 'dashboard', label: 'داشبورد کنترل ارشد', description: 'نظارت کلی بر انضباط، عادات و ثروت', icon: <LayoutGrid size={16} /> },
     { key: 'journal', label: 'ژورنال معامله‌گری', description: 'ثبت ترید و فیلتر دقیق عملکرد', icon: <BookOpen size={16} /> },
     { key: 'focus', label: 'اتاق تمرکز زنده', description: 'ساعت پومودورو، سکوت و لیست انتخابی', icon: <Sparkles size={16} /> },
     { key: 'financial', label: 'برنامه‌ریزی اقتصادی', description: 'ویرایش دارایی، اقساط وام و دیون', icon: <DollarSign size={16} /> },
@@ -688,21 +1077,34 @@ export default function App() {
   ] as const;
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans selection:bg-indigo-600 selection:text-white antialiased transition-colors duration-300 ${
-      darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
+    <div className={`min-h-screen flex flex-col font-sans selection:bg-indigo-600/30 selection:text-indigo-400 antialiased transition-colors duration-300 ${
+      darkMode ? 'dark bg-[#070913] text-[#f1f3f9]' : 'bg-[#fafbfe] text-slate-900'
     }`}>
       
+      {/* Decorative background gradients for glass look */}
+      <div className="fixed top-[-250px] left-[-200px] w-[600px] h-[600px] rounded-full bg-indigo-600/5 dark:bg-indigo-505/5 blur-[120px] pointer-events-none z-0" />
+      <div className="fixed bottom-[-200px] right-[-150px] w-[500px] h-[500px] rounded-full bg-amber-500/3 dark:bg-amber-505/3 blur-[120px] pointer-events-none z-0" />
+
       {/* Dynamic minimalist system status top flag bar */}
-      <header className={`border-b px-6 py-3.5 flex items-center justify-between transition-colors ${
-        darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/80 text-slate-900'
+      <header className={`border-b px-6 py-4 flex items-center justify-between transition-all duration-300 relative z-10 ${
+        darkMode ? 'bg-slate-900/60 border-slate-800/80 backdrop-blur-md' : 'bg-white/90 border-slate-150 backdrop-blur-md shadow-sm'
       }`} dir="rtl">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-display font-extrabold text-base shadow-sm select-none">
-            N
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-display font-black text-xl shadow-lg shadow-indigo-500/10 select-none animate-pulse">
+            Z
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight font-display">دفترچه کاری زیست جامع زنیت (Zenith Workspace)</h1>
-            <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-550'}`}>مجموعه فضاهای یکپارچه کاملاً آفلاین معاملاتی، تمرکزی و یادداشتی با تم پرتراکم</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm sm:text-base font-black tracking-tight font-display bg-clip-text text-transparent bg-gradient-to-l from-indigo-500 via-indigo-600 to-violet-750 dark:from-slate-100 dark:to-indigo-300">
+                اتاق کار هوشمند زیست جامع زنیت
+              </h1>
+              <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
+                Zenith v2.5
+              </span>
+            </div>
+            <p className={`text-[10px] mt-0.5 font-medium ${darkMode ? 'text-slate-400' : 'text-slate-450'}`}>
+              پلتفرم فوق‌پیشرفته و منسجم آفلاین مدیریت معامله‌گری، بهینه‌سازی ثروت، انضباط بیدارباش و توسعه فردی
+            </p>
           </div>
         </div>
 
@@ -710,10 +1112,10 @@ export default function App() {
           {/* Dark Mode Switcher */}
           <button 
             onClick={handleToggleDarkMode}
-            className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-center ${
+            className={`p-2 rounded-xl border transition-all duration-300 cursor-pointer flex items-center justify-center shadow-sm ${
               darkMode 
-                ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700' 
-                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                ? 'bg-slate-800/80 border-slate-750 text-amber-400 hover:bg-slate-800 hover:text-amber-300' 
+                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
             }`}
             title={darkMode ? 'تم روشن' : 'تم تیره'}
           >
@@ -721,44 +1123,52 @@ export default function App() {
           </button>
 
           {/* Status Label */}
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold ${
-            darkMode ? 'bg-slate-800 text-indigo-300' : 'bg-slate-100 text-slate-750'
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold ${
+            darkMode ? 'bg-slate-900/90 border border-slate-800/80 text-indigo-400' : 'bg-slate-100 border border-slate-200/50 text-slate-705'
           }`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping inline-block" />
-            ذخیره‌سازی آفلاین فعال است
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+            سیستم امن و آفلاین
           </span>
-          <span className="text-[10px] text-slate-400 font-mono hidden md:inline">2026-05-29 UTC</span>
+          <span className="text-[10px] text-slate-400 font-mono hidden lg:inline bg-slate-500/5 border border-slate-500/10 px-2 py-1 rounded-lg">2026-05-30 UTC</span>
         </div>
       </header>
 
       {/* Main body split layouts */}
-      <div className="flex-1 flex flex-col md:flex-row">
+      <div className="flex-1 flex flex-col md:flex-row relative z-10">
         
         {/* Right sidebars - tab selectors and system controls */}
-        <nav className={`w-full md:w-64 border-b md:border-b-0 md:border-l p-4 shrink-0 flex flex-col justify-between text-right transition-colors ${
-          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/90'
+        <nav className={`w-full md:w-[270px] border-b md:border-b-0 md:border-l p-5 shrink-0 flex flex-col justify-between text-right transition-all duration-300 ${
+          darkMode ? 'bg-[#0b0e1e]/80 border-slate-800/80' : 'bg-[#f7f9fd] border-slate-200/90'
         }`} dir="rtl">
           <div className="space-y-4">
-            <span className="text-[9px] uppercase tracking-widest font-extrabold text-slate-400 block px-2 select-none">بخش‌های کاری زنیت</span>
+            <span className="text-[10px] uppercase tracking-widest font-black text-slate-400/90 dark:text-slate-500 block px-2 select-none">
+              محفظه‌های هدایت کاربری
+            </span>
             
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {tabsConfig.map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`w-full p-2.5 rounded-xl text-xs font-semibold text-right transition-all duration-200 flex items-center justify-between group cursor-pointer ${
+                  className={`w-full p-3 rounded-2xl text-xs font-bold text-right transition-all duration-300 flex items-center justify-between group cursor-pointer border ${
                     activeTab === tab.key 
-                      ? (darkMode ? 'bg-slate-800 text-indigo-300 border border-slate-700/50' : 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50') 
-                      : (darkMode ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50')
+                      ? (darkMode ? 'bg-indigo-650/15 text-indigo-300 border-indigo-500/40 shadow-lg shadow-indigo-950/20' : 'bg-white text-indigo-700 shadow-md shadow-indigo-100/30 border-indigo-100') 
+                      : (darkMode ? 'text-slate-450 border-transparent hover:text-slate-100 hover:bg-slate-900/80' : 'text-slate-650 border-transparent hover:text-slate-900 hover:bg-slate-200/40')
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className={activeTab === tab.key ? 'text-indigo-550' : (darkMode ? 'text-slate-500 group-hover:text-slate-300' : 'text-slate-400 group-hover:text-slate-950')}>
+                  <div className="flex items-center gap-3">
+                    <span className={`p-1.5 rounded-xl transition-all duration-300 ${
+                      activeTab === tab.key 
+                        ? (darkMode ? 'bg-indigo-500/25 text-indigo-400' : 'bg-indigo-50 text-indigo-600') 
+                        : (darkMode ? 'text-slate-500 group-hover:text-slate-305' : 'text-slate-400 group-hover:text-slate-950')
+                    }`}>
                       {tab.icon}
                     </span>
                     <div className="text-right">
-                      <div className="font-bold">{tab.label}</div>
-                      <div className={`text-[9px] ${activeTab === tab.key ? (darkMode ? 'text-indigo-300/80' : 'text-indigo-500/80') : 'text-slate-400'}`}>{tab.description}</div>
+                      <div className="font-extrabold">{tab.label}</div>
+                      <div className={`text-[9px] mt-0.5 font-medium ${activeTab === tab.key ? (darkMode ? 'text-indigo-300/80' : 'text-indigo-550') : 'text-slate-400'}`}>
+                        {tab.description}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -767,19 +1177,44 @@ export default function App() {
           </div>
 
           {/* Minimal info box down sidebar */}
-          <div className={`mt-8 border-t pt-3.5 space-y-2 text-right hidden md:block ${
-            darkMode ? 'border-slate-800' : 'border-slate-100'
+          <div className={`mt-8 border-t pt-4 space-y-3.5 text-right hidden md:block ${
+            darkMode ? 'border-slate-850' : 'border-slate-200/60'
           }`}>
-            <div className="flex items-start gap-1 text-[9px] text-slate-500 justify-end">
-              <span className="font-sans leading-relaxed">این ابزار در مرورگر شما با تکنولوژی رمز شده ذخیره‌سازی محلی کار می‌کند. حتی در صورت قطع کامل اینترنت اطلاعات شما امن و قابل دسترس آفلاین است.</span>
-              <Info size={11} className="shrink-0 mt-0.5 text-slate-400" />
+            <div className="flex items-start gap-2 text-[9px] text-slate-550 dark:text-slate-400 justify-end leading-relaxed">
+              <span className="font-sans leading-relaxed text-[10px]">
+                اطلاعات ثبت‌شده شما منحصراً در پایگاه داده داخلی مرورگر شخصی ذخیره شده است. هیچ سرور خارجی اطلاعات حساس شما را ردگیری نمی‌کند.
+              </span>
+              <Info size={13} className="shrink-0 mt-0.5 text-indigo-500" />
             </div>
-            <div className="text-[8px] text-slate-400 text-center font-semibold tracking-wider">CRAFTED FOR PEAK TRADERS</div>
+            
+            <div className="text-[8px] font-black tracking-wider text-indigo-600 dark:text-indigo-400 text-center uppercase">
+              ZENITH HIGH PERFORMANCE LABS
+            </div>
           </div>
         </nav>
 
         {/* Central main workspace sections rendering view container */}
         <main className="flex-1 p-5 overflow-y-auto max-w-7xl mx-auto w-full">
+          {activeTab === 'dashboard' && (
+            <DashboardSection 
+              trades={trades}
+              transactions={transactions}
+              assets={assets}
+              loans={loans}
+              debtClaims={debtClaims}
+              habits={habits}
+              tasks={tasks}
+              reminders={reminders}
+              ideas={ideas}
+              games={games}
+              serials={serials}
+              darkMode={darkMode}
+              onNavigate={(tab) => setActiveTab(tab)}
+              onAddTask={(title, day, time, deadlineTime, alarmType) => handleAddTask({ title, day, time, deadlineTime, alarmType, hasAlarm: alarmType !== 'none' })}
+              onAddIdea={(title, description, estimatedHours) => handleAddIdea(title, estimatedHours, description)}
+            />
+          )}
+
           {activeTab === 'journal' && (
             <JournalSection 
               trades={trades}
@@ -832,6 +1267,8 @@ export default function App() {
               onToggleReminder={handleToggleReminder}
               onDeleteReminder={handleDeleteReminder}
               onArchiveTodayTasks={handleArchiveTodayTasks}
+              onTriggerAlarm={handleTriggerAlarm}
+              onTriggerHabitAlarm={handleTriggerHabitAlarm}
               darkMode={darkMode}
             />
           )}
@@ -878,6 +1315,144 @@ export default function App() {
         </main>
 
       </div>
+
+      {activeNotification && (
+        <div className="fixed top-4 right-4 bg-indigo-650 border border-indigo-500 text-white z-[9999] p-4 rounded-2xl shadow-xl flex items-start gap-3 max-w-sm animate-bounce" dir="rtl">
+          <div className="p-1 rounded-full bg-white/10 text-white mt-0.5">
+            <Sparkles size={16} />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-xs font-bold leading-tight">{activeNotification.title}</h4>
+            <p className="text-[10px] text-slate-100 mt-1 leading-relaxed">{activeNotification.desc}</p>
+          </div>
+          <button 
+            onClick={() => setActiveNotification(null)}
+            className="text-white/70 hover:text-white transition-colors cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Math Alarm modal ringtone popup overlay */}
+      {mathAlarmTask && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4" dir="rtl">
+          <div className={`rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-5 animate-pulse border ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
+          }`}>
+            <div className="flex justify-center text-indigo-500">
+              <BellRing size={52} className="animate-bounce" />
+            </div>
+            
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">وضعیت زنگ حشاش</span>
+              <h3 className="text-lg font-extrabold flex justify-center items-center gap-1.5 leading-snug">
+                <Clock size={18} className="text-indigo-500" />
+                <span>زنگ هوشمند ریاضی: {mathAlarmTask.title}</span>
+              </h3>
+              <p className="text-xs text-slate-400">سطح چالش: محاسبات ضرب دو رقمی خواب‌شکن</p>
+            </div>
+
+            <div className={`p-4 rounded-2xl border space-y-3 ${
+              darkMode ? 'bg-slate-950 border-slate-850' : 'bg-zinc-50 border-zinc-150'
+            }`}>
+              <p className="text-xs text-slate-450 leading-relaxed font-semibold">
+                جهت متوقف ساختن صدای آلارم باید پاسخ صحیح را محاسبه کنید! ({solvedCount} از ۲ مرحله برطرف شده)
+              </p>
+
+              <form onSubmit={handleVerifyAnswer} className="space-y-3">
+                <div className="text-xl font-bold font-mono tracking-wider text-indigo-500" dir="ltr">
+                  {mathNum1} × {mathNum2} = ؟
+                </div>
+
+                <input 
+                  type="number"
+                  placeholder="پاسخ را بنویسید"
+                  required
+                  autoFocus
+                  value={mathUserAnswer}
+                  onChange={(e) => setMathUserAnswer(e.target.value)}
+                  className={`w-full p-2.5 rounded-xl text-center font-mono focus:outline-none text-base border ${
+                    darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
+                  }`}
+                />
+
+                <button 
+                  type="submit"
+                  className="w-full h-10 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+                >
+                  تأیید پاسخ و قطع خواب‌شکن
+                </button>
+              </form>
+            </div>
+
+            {emergencyConfirm ? (
+              <div className="flex flex-col items-center gap-1 bg-slate-900/40 p-2 rounded-xl border border-slate-800" dir="rtl">
+                <span className="text-[9px] text-rose-500 font-bold">زنگ خاموش شود؟ (این کار باعث کاهش درصد تعهد می‌شود)</span>
+                <div className="flex items-center gap-3 mt-1">
+                  <button 
+                    onClick={() => {
+                      setMathAlarmTask(null);
+                      setEmergencyConfirm(false);
+                    }}
+                    className="text-[9px] text-rose-500 hover:text-rose-400 font-bold underline cursor-pointer"
+                  >
+                    بله، قطع شود
+                  </button>
+                  <button 
+                    onClick={() => setEmergencyConfirm(false)}
+                    className="text-[9px] text-slate-400 hover:text-slate-300 underline cursor-pointer"
+                  >
+                    انصراف
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setEmergencyConfirm(true)}
+                className="text-[10px] text-slate-500 hover:text-slate-400 underline cursor-pointer"
+              >
+                متوقف کردن اضطراری زنگ
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Normal Alarm modal ringtone popup overlay */}
+      {normalAlarmTask && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className={`rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-5 animate-pulse border ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
+          }`}>
+            <div className="flex justify-center text-indigo-500">
+              <Bell size={52} className="animate-bounce" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">زنگ هشدار معمولی</span>
+              <h3 className="text-lg font-extrabold">زنگ یادآوری تسک: {normalAlarmTask.title}</h3>
+              <p className="text-xs text-slate-400 font-mono">ساعت تنظیم شده: {normalAlarmTask.time || '--:--'}</p>
+            </div>
+
+            <div className={`p-5 rounded-2xl border space-y-3 ${
+              darkMode ? 'bg-slate-950 border-slate-850' : 'bg-zinc-50 border-zinc-150'
+            }`}>
+              <p className="text-xs text-slate-450 leading-relaxed">
+                مدت زمان یادآوری نهایی فرا رسیده است. لطفاً اقدام متناسب را اجرا کنید.
+              </p>
+              
+              <button
+                type="button"
+                onClick={() => setNormalAlarmTask(null)}
+                className="w-full h-11 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+              >
+                متوجه شدم و خاموش کن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -26,6 +26,8 @@ interface HabitsSectionProps {
   onToggleReminder: (id: string) => void;
   onDeleteReminder: (id: string) => void;
   onArchiveTodayTasks: () => void;
+  onTriggerAlarm?: (task: DayTask) => void;
+  onTriggerHabitAlarm?: (h: Habit) => void;
   darkMode?: boolean;
 }
 
@@ -43,6 +45,8 @@ export default function HabitsSection({
   onToggleReminder,
   onDeleteReminder,
   onArchiveTodayTasks,
+  onTriggerAlarm,
+  onTriggerHabitAlarm,
   darkMode = false
 }: HabitsSectionProps) {
   // Toggle for registration panel
@@ -69,258 +73,7 @@ export default function HabitsSection({
   // Performance Month Selection state (defaults to May 2026)
   const [selectedMonth, setSelectedMonth] = useState('2026-05');
 
-  // Alarm simulation active overlays
-  const [mathAlarmTask, setMathAlarmTask] = useState<DayTask | null>(null);
-  const [normalAlarmTask, setNormalAlarmTask] = useState<DayTask | null>(null);
-  const [activeNotification, setActiveNotification] = useState<{ id: string; title: string; desc: string } | null>(null);
 
-  // Math puzzle state
-  const [mathNum1, setMathNum1] = useState(12);
-  const [mathNum2, setMathNum2] = useState(7);
-  const [mathUserAnswer, setMathUserAnswer] = useState('');
-  const [solvedCount, setSolvedCount] = useState(0);
-  const [emergencyConfirm, setEmergencyConfirm] = useState(false);
-
-  const [rungIds, setRungIds] = useState<string[]>([]);
-  const alarmAudioIntervalRef = useRef<any>(null);
-  const alarmAudioCtxRef = useRef<any>(null);
-
-  // pre-init & unlock AudioContext on any screen touch/gesture to bypass browser user gesture blocks
-  useEffect(() => {
-    const unlockAudio = () => {
-      try {
-        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioCtxClass) {
-          if (!alarmAudioCtxRef.current) {
-            const ctx = new AudioCtxClass();
-            alarmAudioCtxRef.current = ctx;
-            if (ctx.state === 'suspended') {
-              ctx.resume().catch(() => {});
-            }
-          } else if (alarmAudioCtxRef.current.state === 'suspended') {
-            alarmAudioCtxRef.current.resume().catch(() => {});
-          }
-        }
-      } catch (e) {
-        console.warn('Web Audio Context unlock deferred:', e);
-      }
-      
-      // Remove listeners once touch/click triggered
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
-    };
-
-    window.addEventListener('click', unlockAudio);
-    window.addEventListener('touchstart', unlockAudio);
-    return () => {
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
-    };
-  }, []);
-
-  const startLoopingAlarmSound = () => {
-    if (alarmAudioIntervalRef.current) return;
-    try {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtxClass) return;
-      
-      let ctx = alarmAudioCtxRef.current;
-      if (!ctx || ctx.state === 'closed') {
-        ctx = new AudioCtxClass();
-        alarmAudioCtxRef.current = ctx;
-      }
-      
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-
-      const playDoubleBeep = () => {
-        if (!ctx || ctx.state === 'closed') return;
-        
-        // Attempt to resume suspended dynamic contexts
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-
-        // Make sound highly expressive, urgent, and loud (increased volume and frequency pitch contrast)
-        // Beep 1 (Urgent High-Pitch Alert)
-        const osc1 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.frequency.setValueAtTime(1046.50, ctx.currentTime); // C6 pitch
-        gain1.gain.setValueAtTime(0.5, ctx.currentTime); // Louder volume (0.5 instead of 0.2)
-        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-        osc1.start(ctx.currentTime);
-        osc1.stop(ctx.currentTime + 0.2);
-
-        // Beep 2 (Alternating Alarm Pitch)
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.frequency.setValueAtTime(1318.51, ctx.currentTime + 0.25); // E6 pitch
-        gain2.gain.setValueAtTime(0.55, ctx.currentTime + 0.25);
-        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
-        osc2.start(ctx.currentTime + 0.25);
-        osc2.stop(ctx.currentTime + 0.45);
-      };
-
-      playDoubleBeep();
-      alarmAudioIntervalRef.current = setInterval(playDoubleBeep, 1000);
-    } catch (err) {
-      console.warn('Failed to start looping alarm audio:', err);
-    }
-  };
-
-  const stopLoopingAlarmSound = () => {
-    if (alarmAudioIntervalRef.current) {
-      clearInterval(alarmAudioIntervalRef.current);
-      alarmAudioIntervalRef.current = null;
-    }
-    // Retain context open, do not .close() it so we don't have to re-unlock user gestures.
-    // Instead, just suspend/pause context audio processing
-    if (alarmAudioCtxRef.current && alarmAudioCtxRef.current.state === 'running') {
-      try {
-        alarmAudioCtxRef.current.suspend().catch(() => {});
-      } catch (e) {}
-    }
-  };
-
-  // Listen to active overlays and start/stop looping alarm sound
-  useEffect(() => {
-    if (mathAlarmTask || normalAlarmTask) {
-      startLoopingAlarmSound();
-    } else {
-      stopLoopingAlarmSound();
-    }
-    return () => {
-      stopLoopingAlarmSound();
-    };
-  }, [mathAlarmTask, normalAlarmTask]);
-
-  // Auto-check deadlines and scheduled alarm triggers based on current date & time
-  useEffect(() => {
-    const checkOverdueAndAlerts = () => {
-      const now = new Date();
-      const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      const localTodayISO = now.toISOString().slice(0, 10);
-      
-      // Update missed tasks if they passed the deadline time
-      tasks.forEach(t => {
-        if (!t.completed && !t.missed && t.day === 'today' && t.deadlineTime) {
-          if (currentHourMin > t.deadlineTime) {
-            t.missed = true;
-          }
-        }
-      });
-
-      // Automatically trigger alarm if current time matches scheduled time
-      tasks.forEach(t => {
-        if (!t.completed && !t.missed && t.day === 'today' && t.time && t.alarmType && t.alarmType !== 'none') {
-          if (currentHourMin === t.time && !rungIds.includes(t.id)) {
-            setRungIds(prev => [...prev, t.id]);
-            handleTriggerAlarm(t);
-          }
-        }
-      });
-
-      // Automatically trigger habits alarm if current time matches scheduled time
-      habits.forEach(h => {
-        const isCompleted = !!h.history[localTodayISO];
-        const isMissed = h.deadlineTime ? (currentHourMin > h.deadlineTime) : false;
-        
-        if (!isCompleted && !isMissed && h.time && h.alarmType && h.alarmType !== 'none') {
-          const habitKey = `${h.id}_${localTodayISO}`;
-          if (currentHourMin === h.time && !rungIds.includes(habitKey)) {
-            setRungIds(prev => [...prev, habitKey]);
-            handleTriggerHabitAlarm(h);
-          }
-        }
-      });
-    };
-
-    const interval = setInterval(checkOverdueAndAlerts, 10000); // Check every 10 seconds
-    return () => clearInterval(interval);
-  }, [tasks, habits, rungIds]);
-
-  // Generate a math question
-  const generateMathQuestion = () => {
-    const n1 = Math.floor(Math.random() * 80) + 11;
-    const n2 = Math.floor(Math.random() * 7) + 3;
-    setMathNum1(n1);
-    setMathNum2(n2);
-    setMathUserAnswer('');
-  };
-
-  // Turn Alarm sound/simulation on
-  const handleTriggerAlarm = (task: DayTask) => {
-    const type = task.alarmType || 'none';
-    if (type === 'math') {
-      setMathAlarmTask(task);
-      setSolvedCount(0);
-      generateMathQuestion();
-    } else if (type === 'normal') {
-      setNormalAlarmTask(task);
-    } else if (type === 'notification') {
-      setActiveNotification({
-        id: task.id,
-        title: 'اعلان صوتی تمرکزی فانی (Local Notification)',
-        desc: `زمان انجام تسک فرا رسید: ${task.title}`
-      });
-    } else {
-      alert(`کار شروع شد: ${task.title}`);
-    }
-
-    // Play synthesized pitch
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      osc.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5 pitch
-      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.6);
-    } catch (e) {}
-  };
-
-  // Helper to trigger alarm for habits in the daily list
-  const handleTriggerHabitAlarm = (h: Habit) => {
-    const tempTask: DayTask = {
-      id: h.id,
-      title: `عادت: ${h.title}`,
-      day: 'today',
-      time: h.time,
-      alarmType: h.alarmType || 'none',
-      deadlineTime: h.deadlineTime,
-      completed: !!h.history[todayISO],
-      missed: false,
-      hasAlarm: !!(h.alarmType && h.alarmType !== 'none'),
-      createdAt: h.createdAt
-    };
-    handleTriggerAlarm(tempTask);
-  };
-
-  // Submit Answer to puzzle
-  const handleVerifyAnswer = (e: React.FormEvent) => {
-    e.preventDefault();
-    const correctVal = mathNum1 * mathNum2;
-    if (parseInt(mathUserAnswer, 10) === correctVal) {
-      const nextCount = solvedCount + 1;
-      setSolvedCount(nextCount);
-      if (nextCount >= 2) {
-        setMathAlarmTask(null);
-        alert('مسائل ریاضی با موفقیت حل شدند! زنگ خواب‌شکن خاموش گردید.');
-      } else {
-        generateMathQuestion();
-      }
-    } else {
-      alert('پاسخ اشتباه است! تفکر کنید و مجدداً حساب کنید.');
-      setMathUserAnswer('');
-    }
-  };
 
   const handleAddHabitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -593,10 +346,9 @@ export default function HabitsSection({
               <span className="w-2 h-2 rounded-sm bg-indigo-300 inline-block" /> ۴۰ تا ۷۰ درصد
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm bg-indigo-600 inline-block" /> ۱۰۰٪ کامل
+              <span className="w-2 h-2 rounded-sm bg-indigo-600 inline-block" /> ۱۰۰ درصد کامل
             </span>
           </div>
-          <span className="font-mono text-[9px] font-bold text-slate-450">{selectedMonth}</span>
         </div>
       </div>
     );
@@ -604,143 +356,6 @@ export default function HabitsSection({
 
   return (
     <div className="space-y-6" dir="rtl">
-      
-      {/* Floating browser-like Notification alert toast is triggered */}
-      {activeNotification && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900 text-white rounded-xl shadow-2xl p-4 border border-slate-800 animate-slide-up flex gap-3 items-start font-sans">
-          <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
-            <BellRing size={16} className="animate-bounce" />
-          </div>
-          <div className="flex-1 text-right">
-            <h4 className="text-xs font-bold leading-tight">{activeNotification.title}</h4>
-            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{activeNotification.desc}</p>
-          </div>
-          <button 
-            onClick={() => setActiveNotification(null)}
-            className="text-slate-450 hover:text-white transition-colors cursor-pointer"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Math Alarm modal ringtone popup overlay */}
-      {mathAlarmTask && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" dir="rtl">
-          <div className={`rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-5 animate-pulse border ${
-            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
-          }`}>
-            <div className="flex justify-center text-indigo-500">
-              <BellRing size={52} className="animate-bounce" />
-            </div>
-            
-            <div className="space-y-1">
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">وضعیت زنگ حشاش</span>
-              <h3 className="text-lg font-extrabold">زنگ هوشمند ریاضی: {mathAlarmTask.title}</h3>
-              <p className="text-xs text-slate-400">سطح چالش: محاسبات ضرب دو رقمی خواب‌شکن</p>
-            </div>
-
-            <div className={`p-4 rounded-2xl border space-y-3 ${
-              darkMode ? 'bg-slate-950 border-slate-850' : 'bg-zinc-50 border-zinc-150'
-            }`}>
-              <p className="text-xs text-slate-450 leading-relaxed font-semibold">
-                جهت متوقف ساختن صدای آلارم باید پاسخ صحیح را محاسبه کنید! ({solvedCount} از ۲ مرحله برطرف شده)
-              </p>
-
-              <form onSubmit={handleVerifyAnswer} className="space-y-3">
-                <div className="text-xl font-bold font-mono tracking-wider text-indigo-500" dir="ltr">
-                  {mathNum1} × {mathNum2} = ؟
-                </div>
-
-                <input 
-                  type="number"
-                  placeholder="پاسخ را بنویسید"
-                  required
-                  autoFocus
-                  value={mathUserAnswer}
-                  onChange={(e) => setMathUserAnswer(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl text-center font-mono focus:outline-none text-base border ${
-                    darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
-                  }`}
-                />
-
-                <button 
-                  type="submit"
-                  className="w-full h-10 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
-                >
-                  تأیید پاسخ و قطع خواب‌شکن
-                </button>
-              </form>
-            </div>
-
-            {emergencyConfirm ? (
-              <div className="flex flex-col items-center gap-1 bg-slate-900/40 p-2 rounded-xl border border-slate-800" dir="rtl">
-                <span className="text-[9px] text-rose-450 font-bold">زنگ خاموش شود؟ (این کار باعث کاهش درصد تعهد می‌شود)</span>
-                <div className="flex items-center gap-3 mt-1">
-                  <button 
-                    onClick={() => {
-                      setMathAlarmTask(null);
-                      setEmergencyConfirm(false);
-                    }}
-                    className="text-[9px] text-rose-500 hover:text-rose-400 font-bold underline cursor-pointer"
-                  >
-                    بله، قطع شود
-                  </button>
-                  <button 
-                    onClick={() => setEmergencyConfirm(false)}
-                    className="text-[9px] text-slate-400 hover:text-slate-300 underline cursor-pointer"
-                  >
-                    انصراف
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button 
-                onClick={() => setEmergencyConfirm(true)}
-                className="text-[10px] text-slate-505 hover:text-slate-400 underline cursor-pointer"
-              >
-                متوقف کردن اضطراری زنگ
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Normal Alarm modal ringtone popup overlay */}
-      {normalAlarmTask && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" dir="rtl">
-          <div className={`rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-5 animate-pulse border ${
-            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
-          }`}>
-            <div className="flex justify-center text-indigo-500">
-              <Bell size={52} className="animate-bounce" />
-            </div>
-
-            <div className="space-y-1">
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">زنگ هشدار معمولی</span>
-              <h3 className="text-lg font-extrabold">زنگ یادآوری تسک: {normalAlarmTask.title}</h3>
-              <p className="text-xs text-slate-400 font-mono">ساعت تنظیم شده: {normalAlarmTask.time || '--:--'}</p>
-            </div>
-
-            <div className={`p-5 rounded-2xl border space-y-3 ${
-              darkMode ? 'bg-slate-950 border-slate-850' : 'bg-zinc-55 border-zinc-150'
-            }`}>
-              <p className="text-xs text-slate-450 leading-relaxed">
-                مدت زمان یادآوری نهایی فرا رسیده است. لطفاً اقدام متناسب را اجرا کنید.
-              </p>
-              
-              <button
-                type="button"
-                onClick={() => setNormalAlarmTask(null)}
-                className="w-full h-11 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
-              >
-                متوجه شدم و خاموش کن
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modern Collapsible registration panel for defining and creating tasks/habits */}
       <div className={`p-4 rounded-3xl border mb-3 transition-all ${
         darkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-indigo-50/20 border-indigo-100'
@@ -1097,7 +712,7 @@ export default function HabitsSection({
                             
                             {!task.completed && !task.missed && task.alarmType && task.alarmType !== 'none' && (
                               <button
-                                onClick={() => handleTriggerAlarm(task)}
+                                onClick={() => onTriggerAlarm?.(task)}
                                 className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
                                   darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-705'
                                 }`}
@@ -1213,7 +828,7 @@ export default function HabitsSection({
 
                               {!isCompleted && !isMissed && h.alarmType && h.alarmType !== 'none' && (
                                 <button
-                                  onClick={() => handleTriggerHabitAlarm(h)}
+                                  onClick={() => onTriggerHabitAlarm?.(h)}
                                   className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
                                     darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-705'
                                   }`}
