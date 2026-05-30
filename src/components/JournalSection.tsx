@@ -320,12 +320,12 @@ export default function JournalSection({
   return (
     <div className="space-y-6" dir="rtl">
       {/* Overview stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-1">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-1">
         <div className={`p-4 border rounded-2xl flex items-center justify-between shadow-sm transition-colors ${
           darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
         }`}>
           <div>
-            <span className="text-xs text-slate-500 font-medium">کل معاملات فیلترشده</span>
+            <span className="text-xs text-slate-505 font-medium">کل معاملات فیلترشده</span>
             <h3 className="text-2xl font-bold mt-1 font-mono tracking-tight">{totalTradesCount}</h3>
           </div>
           <BookOpen className="text-slate-400" size={22} />
@@ -335,7 +335,7 @@ export default function JournalSection({
           darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
         }`}>
           <div>
-            <span className="text-xs text-slate-500 font-medium">نسبت پیروزی (Win Rate)</span>
+            <span className="text-xs text-slate-505 font-medium">نسبت پیروزی (Win Rate)</span>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <h3 className="text-2xl font-bold text-emerald-500 font-mono tracking-tight">{winRate}%</h3>
               <span className="text-[10px] text-slate-400 font-medium">({profitableTrades} از {totalTradesCount})</span>
@@ -348,7 +348,7 @@ export default function JournalSection({
           darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
         }`}>
           <div>
-            <span className="text-xs text-slate-500 font-medium">سود/زیان کل کارنامه</span>
+            <span className="text-xs text-slate-505 font-medium">سود/زیان کل کارنامه</span>
             <h3 className={`text-2xl font-bold mt-1 font-mono tracking-tight ${totalGainLoss >= 0 ? (darkMode ? 'text-emerald-400' : 'text-slate-900') : 'text-rose-600'}`}>
               {totalGainLoss >= 0 ? '+' : ''}{totalGainLoss.toLocaleString()}$
             </h3>
@@ -357,82 +357,82 @@ export default function JournalSection({
             <TrendingUp size={16} />
           </div>
         </div>
+      </div>
 
-        {/* HIGH-DENSITY 4-WAY FILTER PANEL - requested by User to support dynamic currency pair and weekday filters */}
-        <div className={`p-4 border rounded-2xl flex flex-col justify-between shadow-sm gap-2 transition-all md:col-span-1 lg:col-span-1 ${
-          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
-        }`}>
-          <div className="flex items-center justify-between border-b pb-1.5 border-slate-100/10">
-            <span className="text-[11px] text-slate-400 font-extrabold flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" /> فیلتر چندبعدی کارنامه معاملاتی
-            </span>
-            <Calendar className="text-slate-500" size={15} />
+      {/* DETACHED SPARK / HIGH-READABILITY FULL-WIDTH FILTER PANEL */}
+      <div className={`p-4 border rounded-2xl flex flex-col justify-between shadow-sm gap-3 transition-all ${
+        darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
+      }`}>
+        <div className="flex items-center justify-between border-b pb-1.5 border-slate-100/10">
+          <span className="text-[11px] text-indigo-400 font-black flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse" /> فیلترهای چندبعدی کارنامه معاملاتی
+          </span>
+          <Calendar className="text-slate-450" size={15} />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-right">
+          <div>
+            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">بایگانی ماه</span>
+            <select 
+              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+              }`}
+              value={selectedArchive}
+              onChange={(e) => setSelectedArchive(e.target.value)}
+            >
+              <option value="all">همه ماه‌ها</option>
+              {getArchiveGroups().map(group => (
+                <option key={group} value={group}>{getPersianMonthName(group)}</option>
+              ))}
+            </select>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div>
-              <span className="text-[9px] text-slate-500 block font-bold mb-1">بایگانی ماه</span>
-              <select 
-                className={`w-full p-1.5 border rounded-lg focus:outline-none focus:border-indigo-505 text-xs font-semibold cursor-pointer ${
-                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-705 border-slate-200 bg-white'
-                }`}
-                value={selectedArchive}
-                onChange={(e) => setSelectedArchive(e.target.value)}
-              >
-                <option value="all" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>همه ماه‌ها</option>
-                {getArchiveGroups().map(group => (
-                  <option key={group} value={group} className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>{getPersianMonthName(group)}</option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">جفت ارز مورد معامله</span>
+            <select 
+              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+              }`}
+              value={pairFilter}
+              onChange={(e) => setPairFilter(e.target.value)}
+            >
+              <option value="all">همه جفت ارزها</option>
+              {Array.from(new Set(['XAUUSD', ...trades.map(t => t.pair)])).sort().map(p => (
+                <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
+              ))}
+            </select>
+          </div>
 
-            <div>
-              <span className="text-[9px] text-slate-400 block font-bold mb-1">جفت ارز</span>
-              <select 
-                className={`w-full p-1.5 border rounded-lg focus:outline-none focus:border-indigo-505 text-xs font-semibold cursor-pointer ${
-                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-705 border-slate-200 bg-white'
-                }`}
-                value={pairFilter}
-                onChange={(e) => setPairFilter(e.target.value)}
-              >
-                <option value="all" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>همه مبالغ</option>
-                {Array.from(new Set(['XAUUSD', ...trades.map(t => t.pair)])).sort().map(p => (
-                  <option key={p} value={p} className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <span className="text-[9px] text-slate-405 block font-bold mb-1">روز هفته</span>
-              <select 
-                className={`w-full p-1.5 border rounded-lg focus:outline-none focus:border-indigo-505 text-xs font-semibold cursor-pointer ${
-                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-705 border-slate-200 bg-white'
-                }`}
-                value={weekdayFilter}
-                onChange={(e) => setWeekdayFilter(e.target.value)}
-              >
-                <option value="all" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>تمام روزها</option>
-                {['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'].map(d => (
-                  <option key={d} value={d} className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>{d}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <span className="text-[9px] text-slate-500 block font-bold mb-1">نتیجه معامله</span>
-              <select 
-                className={`w-full p-1.5 border rounded-lg focus:outline-none focus:border-indigo-505 text-xs font-semibold cursor-pointer ${
-                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-750 border-slate-200 bg-white'
-                }`}
-                value={resultFilter}
-                onChange={(e) => setResultFilter(e.target.value as any)}
-              >
-                <option value="all" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>همه نتایج</option>
-                <option value="profit" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>فقط سودها</option>
-                <option value="loss" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>فقط ضررها</option>
-                <option value="breakeven" className={darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>فقط سربه‌سر</option>
-              </select>
-            </div>
+          <div>
+            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">روز هفته معامله</span>
+            <select 
+              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+              }`}
+              value={weekdayFilter}
+              onChange={(e) => setWeekdayFilter(e.target.value)}
+            >
+              <option value="all">تمام روزها</option>
+              {['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'].map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">برآیند معامله</span>
+            <select 
+              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+              }`}
+              value={resultFilter}
+              onChange={(e) => setResultFilter(e.target.value as any)}
+            >
+              <option value="all">همه نتایج</option>
+              <option value="profit">فقط سودها</option>
+              <option value="loss">فقط ضررها</option>
+              <option value="breakeven">فقط سربه‌سر</option>
+            </select>
           </div>
         </div>
       </div>

@@ -91,6 +91,9 @@ export interface DayTask {
   completed: boolean;
   missed: boolean; // Marked with cross if deadline passes
   createdAt: string;
+  completedAt?: string; // exact HH:MM when checked
+  archived?: boolean;
+  archivedAt?: string; // YYYY-MM-DD when archived
 }
 
 export interface GeneralReminder {

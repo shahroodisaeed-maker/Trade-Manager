@@ -5,6 +5,7 @@ import {
   AlertTriangle, Coffee, Sparkles, Smile, Ban, Wind, Waves, Radio, Brain
 } from 'lucide-react';
 import { DayTask } from '../types';
+import { Preferences } from '@capacitor/preferences';
 
 interface AppLimit {
   id: string;
@@ -57,9 +58,25 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
     ];
   });
 
-  // Sync back to local storage
+  // Load app limits asynchronously from Capacitor native Preferences on mount
+  useEffect(() => {
+    const loadPreferencesApps = async () => {
+      try {
+        const dataVal = await Preferences.get({ key: 'zenith_focus_apps' });
+        if (dataVal.value) {
+          setApps(JSON.parse(dataVal.value));
+        }
+      } catch (err) {
+        console.warn('Capacitor Preferences check for apps bypassed:', err);
+      }
+    };
+    loadPreferencesApps();
+  }, []);
+
+  // Sync back to local storage and native Preferences
   useEffect(() => {
     localStorage.setItem('zenith_focus_apps', JSON.stringify(apps));
+    Preferences.set({ key: 'zenith_focus_apps', value: JSON.stringify(apps) }).catch(() => {});
   }, [apps]);
 
   // Predefined SelectPresets for application blocking

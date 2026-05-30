@@ -16,6 +16,10 @@ import {
   Layers, Github, Compass, ToggleLeft, ToggleRight, Info, Sun, Moon
 } from 'lucide-react';
 
+import { Preferences } from '@capacitor/preferences';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { App as CapacitorApp } from '@capacitor/app';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'journal' | 'focus' | 'financial' | 'habits' | 'ideas' | 'games'>('journal');
 
@@ -29,6 +33,7 @@ export default function App() {
     setDarkMode(prev => {
       const next = !prev;
       localStorage.setItem('zenith_darkMode', next.toString());
+      Preferences.set({ key: 'zenith_darkMode', value: next.toString() }).catch(() => {});
       return next;
     });
   };
@@ -133,18 +138,308 @@ export default function App() {
     ];
   });
 
+  // Asynchronous persistent Capacitor Preference Loader
+  useEffect(() => {
+    const loadCapacitorData = async () => {
+      try {
+        const darkModeVal = await Preferences.get({ key: 'zenith_darkMode' });
+        if (darkModeVal.value !== null) {
+          setDarkMode(darkModeVal.value === 'true');
+        }
+
+        const tradesVal = await Preferences.get({ key: KEYS.TRADES });
+        if (tradesVal.value) setTrades(JSON.parse(tradesVal.value));
+
+        const txsVal = await Preferences.get({ key: KEYS.TXS });
+        if (txsVal.value) setTransactions(JSON.parse(txsVal.value));
+
+        const assetsVal = await Preferences.get({ key: KEYS.ASSETS });
+        if (assetsVal.value) setAssets(JSON.parse(assetsVal.value));
+
+        const loansVal = await Preferences.get({ key: KEYS.LOANS });
+        if (loansVal.value) setLoans(JSON.parse(loansVal.value));
+
+        const debtClaimsVal = await Preferences.get({ key: KEYS.DEBT_CLAIMS });
+        if (debtClaimsVal.value) setDebtClaims(JSON.parse(debtClaimsVal.value));
+
+        const habitsVal = await Preferences.get({ key: KEYS.HABITS });
+        if (habitsVal.value) setHabits(JSON.parse(habitsVal.value));
+
+        const tasksVal = await Preferences.get({ key: KEYS.TASKS });
+        if (tasksVal.value) setTasks(JSON.parse(tasksVal.value));
+
+        const remindersVal = await Preferences.get({ key: KEYS.REMINDERS });
+        if (remindersVal.value) setReminders(JSON.parse(remindersVal.value));
+
+        const ideasVal = await Preferences.get({ key: KEYS.IDEAS });
+        if (ideasVal.value) setIdeas(JSON.parse(ideasVal.value));
+
+        const gamesVal = await Preferences.get({ key: KEYS.GAMES });
+        if (gamesVal.value) setGames(JSON.parse(gamesVal.value));
+
+        const serialsVal = await Preferences.get({ key: KEYS.SERIALS });
+        if (serialsVal.value) setSerials(JSON.parse(serialsVal.value));
+        
+        console.log('Mobile persistence layer synchronized successfully!');
+      } catch (err) {
+        console.warn('Capacitor native storage preferences check bypassed:', err);
+      }
+    };
+
+    // Request permissions for background notifications on load
+    const requestNotificationPermission = async () => {
+      try {
+        const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+        if (isCapacitor) {
+          const perm = await LocalNotifications.checkPermissions();
+          if (perm.display !== 'granted') {
+            await LocalNotifications.requestPermissions();
+          }
+        }
+      } catch (err) {
+        console.warn('Notification permission failed or has been rejected:', err);
+      }
+    };
+
+    loadCapacitorData();
+    requestNotificationPermission();
+  }, []);
+
+  // Check expiration of all tasks with actual device time
+  const checkAllTasksExpiration = () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    setTasks(prevTasks => {
+      let updated = false;
+      const nextTasks = prevTasks.map(t => {
+        if (!t.completed && !t.missed) {
+          if (t.createdAt < todayStr) {
+            if (t.day === 'tomorrow') {
+              updated = true;
+              return { ...t, day: 'today', createdAt: todayStr };
+            } else {
+              updated = true;
+              return { ...t, missed: true };
+            }
+          }
+          if (t.day === 'today' && t.deadlineTime && currentHourMin > t.deadlineTime) {
+            updated = true;
+            return { ...t, missed: true };
+          }
+        }
+        return t;
+      });
+      return updated ? nextTasks : prevTasks;
+    });
+  };
+
+  // Capacitor App Lifecycle: Check task expiration when returning from background (onResume)
+  useEffect(() => {
+    let appStateListener: any = null;
+
+    try {
+      const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+      if (isCapacitor) {
+        appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) {
+            checkAllTasksExpiration();
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('App state listener register bypassed:', e);
+    }
+
+    // Run expiration check once on mounting as well
+    checkAllTasksExpiration();
+
+    return () => {
+      if (appStateListener) {
+        appStateListener.then((h: any) => h.remove()).catch(() => {});
+      }
+    };
+  }, []);
+
+  // Sync background/system alarms for Tasks
+  const syncTaskNotifications = async (currentTasks: DayTask[]) => {
+    try {
+      const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+      if (!isCapacitor) return;
+
+      const pending = await LocalNotifications.getPending();
+      // Filter task-related alarms (IDs under 100000)
+      const tasksPending = pending.notifications.filter(n => n.id < 200000);
+      if (tasksPending.length > 0) {
+        await LocalNotifications.cancel({
+          notifications: tasksPending.map(n => ({ id: n.id }))
+        });
+      }
+
+      const now = new Date();
+      const toSchedule: any[] = [];
+
+      currentTasks.forEach((task, index) => {
+        if (!task.completed && !task.missed && task.alarmType && task.alarmType !== 'none' && task.time) {
+          const targetDate = new Date();
+          const [hours, minutes] = task.time.split(':').map(Number);
+          targetDate.setHours(hours, minutes, 0, 0);
+
+          if (task.day === 'tomorrow') {
+            targetDate.setDate(targetDate.getDate() + 1);
+          } else {
+            if (targetDate <= now) {
+              return; // Already past for today
+            }
+          }
+
+          let numericId = 1000 + index;
+          if (!isNaN(Number(task.id))) {
+            numericId = parseInt(task.id, 10);
+          } else {
+            let hash = 0;
+            for (let i = 0; i < task.id.length; i++) {
+              hash = task.id.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            numericId = Math.abs(hash % 100000);
+          }
+
+          toSchedule.push({
+            title: "⏰ یادآور تسک: " + task.title,
+            body: `زمان انجام تسک فرا رسید (${task.time}) - نوع هشدار: ${
+              task.alarmType === 'math' ? 'هوشمند محاسباتی ریاضی' : 'خواب‌شکن معمولی'
+            }`,
+            id: numericId,
+            schedule: { at: targetDate },
+            sound: 'beep.wav',
+            actionTypeId: "OPEN_APP"
+          });
+        }
+      });
+
+      if (toSchedule.length > 0) {
+        await LocalNotifications.schedule({
+          notifications: toSchedule
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to sync local notifications via Capacitor:', err);
+    }
+  };
+
+  // Sync background/system alarms for Reminders
+  const syncReminderNotifications = async (currentReminders: GeneralReminder[]) => {
+    try {
+      const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+      if (!isCapacitor) return;
+
+      const pending = await LocalNotifications.getPending();
+      const reminderPending = pending.notifications.filter(n => n.id >= 200000 && n.id < 300000);
+      if (reminderPending.length > 0) {
+        await LocalNotifications.cancel({
+          notifications: reminderPending.map(n => ({ id: n.id }))
+        });
+      }
+
+      const now = new Date();
+      const toSchedule: any[] = [];
+
+      currentReminders.forEach((rem, index) => {
+        if (!rem.completed && rem.date && rem.time) {
+          const targetDate = new Date(`${rem.date}T${rem.time}:00`);
+
+          if (targetDate > now) {
+            let numericId = 200000 + index;
+            if (!isNaN(Number(rem.id))) {
+              numericId = 200000 + parseInt(rem.id, 10);
+            } else {
+              let hash = 0;
+              for (let i = 0; i < rem.id.length; i++) {
+                hash = rem.id.charCodeAt(i) + ((hash << 5) - hash);
+              }
+              numericId = 200000 + (Math.abs(hash) % 50000);
+            }
+
+            toSchedule.push({
+              title: "🔔 یادداشت یادآوری: " + rem.title,
+              body: `ساعت زمان‌بندی یادآور به صندوقچه رسید: ${rem.time}`,
+              id: numericId,
+              schedule: { at: targetDate },
+              sound: 'alert.wav',
+              actionTypeId: "OPEN_APP"
+            });
+          }
+        }
+      });
+
+      if (toSchedule.length > 0) {
+        await LocalNotifications.schedule({
+          notifications: toSchedule
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to sync reminder notifications via Capacitor:', err);
+    }
+  };
+
   // Watchers to synchronize core databases to offline localStorage automatically
-  useEffect(() => { localStorage.setItem(KEYS.TRADES, JSON.stringify(trades)); }, [trades]);
-  useEffect(() => { localStorage.setItem(KEYS.TXS, JSON.stringify(transactions)); }, [transactions]);
-  useEffect(() => { localStorage.setItem(KEYS.ASSETS, JSON.stringify(assets)); }, [assets]);
-  useEffect(() => { localStorage.setItem(KEYS.LOANS, JSON.stringify(loans)); }, [loans]);
-  useEffect(() => { localStorage.setItem(KEYS.DEBT_CLAIMS, JSON.stringify(debtClaims)); }, [debtClaims]);
-  useEffect(() => { localStorage.setItem(KEYS.HABITS, JSON.stringify(habits)); }, [habits]);
-  useEffect(() => { localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem(KEYS.REMINDERS, JSON.stringify(reminders)); }, [reminders]);
-  useEffect(() => { localStorage.setItem(KEYS.IDEAS, JSON.stringify(ideas)); }, [ideas]);
-  useEffect(() => { localStorage.setItem(KEYS.GAMES, JSON.stringify(games)); }, [games]);
-  useEffect(() => { localStorage.setItem(KEYS.SERIALS, JSON.stringify(serials)); }, [serials]);
+  useEffect(() => {
+    localStorage.setItem(KEYS.TRADES, JSON.stringify(trades));
+    Preferences.set({ key: KEYS.TRADES, value: JSON.stringify(trades) }).catch(() => {});
+  }, [trades]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.TXS, JSON.stringify(transactions));
+    Preferences.set({ key: KEYS.TXS, value: JSON.stringify(transactions) }).catch(() => {});
+  }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.ASSETS, JSON.stringify(assets));
+    Preferences.set({ key: KEYS.ASSETS, value: JSON.stringify(assets) }).catch(() => {});
+  }, [assets]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.LOANS, JSON.stringify(loans));
+    Preferences.set({ key: KEYS.LOANS, value: JSON.stringify(loans) }).catch(() => {});
+  }, [loans]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.DEBT_CLAIMS, JSON.stringify(debtClaims));
+    Preferences.set({ key: KEYS.DEBT_CLAIMS, value: JSON.stringify(debtClaims) }).catch(() => {});
+  }, [debtClaims]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.HABITS, JSON.stringify(habits));
+    Preferences.set({ key: KEYS.HABITS, value: JSON.stringify(habits) }).catch(() => {});
+  }, [habits]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
+    Preferences.set({ key: KEYS.TASKS, value: JSON.stringify(tasks) }).catch(() => {});
+    syncTaskNotifications(tasks);
+  }, [tasks]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.REMINDERS, JSON.stringify(reminders));
+    Preferences.set({ key: KEYS.REMINDERS, value: JSON.stringify(reminders) }).catch(() => {});
+    syncReminderNotifications(reminders);
+  }, [reminders]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.IDEAS, JSON.stringify(ideas));
+    Preferences.set({ key: KEYS.IDEAS, value: JSON.stringify(ideas) }).catch(() => {});
+  }, [ideas]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.GAMES, JSON.stringify(games));
+    Preferences.set({ key: KEYS.GAMES, value: JSON.stringify(games) }).catch(() => {});
+  }, [games]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.SERIALS, JSON.stringify(serials));
+    Preferences.set({ key: KEYS.SERIALS, value: JSON.stringify(serials) }).catch(() => {});
+  }, [serials]);
 
   // Methods inside Journal
   const handleAddTrade = (newTrade: Omit<TradeLog, 'id'>) => {
@@ -271,7 +566,34 @@ export default function App() {
   };
 
   const handleToggleTask = (id: string) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed, missed: false } : t));
+    setTasks(tasks.map(t => {
+      if (t.id === id) {
+        const nextCompleted = !t.completed;
+        const now = new Date();
+        const completedTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        return { 
+          ...t, 
+          completed: nextCompleted, 
+          completedAt: nextCompleted ? completedTime : undefined,
+          missed: false 
+        };
+      }
+      return t;
+    }));
+  };
+
+  const handleArchiveTodayTasks = () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    setTasks(tasks.map(t => {
+      if (t.day === 'today' && !t.archived) {
+        return {
+          ...t,
+          archived: true,
+          archivedAt: todayStr
+        };
+      }
+      return t;
+    }));
   };
 
   const handleDeleteTask = (id: string) => {
@@ -487,6 +809,7 @@ export default function App() {
               onAddReminder={handleAddReminder}
               onToggleReminder={handleToggleReminder}
               onDeleteReminder={handleDeleteReminder}
+              onArchiveTodayTasks={handleArchiveTodayTasks}
               darkMode={darkMode}
             />
           )}

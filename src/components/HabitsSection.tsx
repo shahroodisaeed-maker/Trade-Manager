@@ -3,7 +3,7 @@ import { Habit, DayTask, GeneralReminder } from '../types';
 import { 
   Plus, Check, Trash2, Calendar, Clock, Bell, 
   BellRing, Award, ShieldAlert, Sparkles, AlertTriangle, X,
-  Activity, ArrowLeft, ArrowRight, Zap, Info
+  Activity, ArrowLeft, ArrowRight, Zap, Info, Archive, History, CheckSquare
 } from 'lucide-react';
 
 interface HabitsSectionProps {
@@ -25,6 +25,7 @@ interface HabitsSectionProps {
   onAddReminder: (reminder: Omit<GeneralReminder, 'id' | 'completed'>) => void;
   onToggleReminder: (id: string) => void;
   onDeleteReminder: (id: string) => void;
+  onArchiveTodayTasks: () => void;
   darkMode?: boolean;
 }
 
@@ -41,8 +42,12 @@ export default function HabitsSection({
   onAddReminder,
   onToggleReminder,
   onDeleteReminder,
+  onArchiveTodayTasks,
   darkMode = false
 }: HabitsSectionProps) {
+  // Toggle for registration panel
+  const [showRegisterPanel, setShowRegisterPanel] = useState(false);
+
   // Habit registration state
   const [habitTitle, setHabitTitle] = useState('');
   const [habitTime, setHabitTime] = useState('');
@@ -575,12 +580,226 @@ export default function HabitsSection({
         </div>
       )}
 
+      {/* Modern Collapsible registration panel for defining and creating tasks/habits */}
+      <div className={`p-4 rounded-3xl border mb-3 transition-all ${
+        darkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-indigo-50/20 border-indigo-100'
+      }`}>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="text-indigo-500 animate-pulse shrink-0" size={18} />
+            <div className="text-right">
+              <h3 className={`text-xs font-black ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>ثبت آلارم‌ها، تسک‌ها و عادات جدید</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5 font-sans leading-relaxed">کلید زیر را برای باز کردن پنل ثبت کارهای جدید یا تعاریف عادات روزانه فشار دهید.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowRegisterPanel(!showRegisterPanel)}
+            className={`flex items-center gap-1.5 px-4 h-9 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border ${
+              showRegisterPanel 
+                ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20' 
+                : 'bg-indigo-600 text-white border-indigo-500 hover:bg-indigo-700'
+            }`}
+          >
+            {showRegisterPanel ? (
+              <>
+                <X size={14} /> بستن فرآیند تعریف کارها
+              </>
+            ) : (
+              <>
+                <Plus size={14} /> تعریف تسک جدید و عادات روزانه
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Collapsible content forms with beautiful seamless CSS transitions */}
+        <div className={`transition-all duration-300 overflow-hidden ${
+          showRegisterPanel ? 'max-h-[850px] opacity-100 mt-4 border-t pt-4 border-slate-200/5' : 'max-h-0 opacity-0 pointer-events-none'
+        }`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-right">
+            
+            {/* Form A: Everyday Recurring Habits */}
+            <div className={`p-4 border rounded-2xl space-y-3 shadow-inner ${
+              darkMode ? 'bg-slate-950/40 border-slate-850' : 'bg-white border-zinc-150'
+            }`}>
+              <div className="flex items-center gap-1.5 border-b pb-2 border-indigo-100/10">
+                <Award className="text-indigo-550" size={16} />
+                <h4 className={`text-xs font-black ${darkMode ? 'text-indigo-400' : 'text-slate-800'}`}>۱. ثبت عادت تکرارشونده همیشگی (ساعات ثابت)</h4>
+              </div>
+
+              <form onSubmit={handleAddHabitSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-slate-400 text-[10px] mb-1 font-semibold">شرح عادت تکرارشونده روزانه *</label>
+                  <input 
+                    type="text" 
+                    placeholder="مثلا: پیاده‌روی صبحگاهی، بک تست چارت طلا، مدیتیشن..."
+                    required
+                    value={habitTitle}
+                    onChange={(e) => setHabitTitle(e.target.value)}
+                    className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:border-indigo-500 ${
+                      darkMode ? 'bg-slate-900 border-slate-700 text-white font-sans' : 'bg-white border-zinc-200 text-slate-905'
+                    }`}
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-[9px]">
+                  <div>
+                    <label className="block text-slate-400 mb-1">ساعت انجام</label>
+                    <input 
+                      type="time" 
+                      value={habitTime}
+                      onChange={(e) => setHabitTime(e.target.value)}
+                      className={`w-full p-1.5 border rounded focus:outline-none font-mono text-center ${
+                        darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-950'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">ددلاین مهار</label>
+                    <input 
+                      type="time" 
+                      value={habitDeadlineTime}
+                      onChange={(e) => setHabitDeadlineTime(e.target.value)}
+                      className={`w-full p-1.5 border rounded focus:outline-none font-mono text-center ${
+                        darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-950'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">خواب‌شکن</label>
+                    <select
+                      value={habitAlarmSelection}
+                      onChange={(e: any) => setHabitAlarmSelection(e.target.value)}
+                      className={`w-full p-1.5 border rounded focus:outline-none font-sans text-center text-[10px] ${
+                        darkMode ? 'bg-slate-950 border-slate-705 text-slate-205' : 'bg-white border-zinc-200 text-slate-705'
+                      }`}
+                    >
+                      <option value="none">بدون آلارم</option>
+                      <option value="notification">نوتیفیکیشن</option>
+                      <option value="normal">آلارم معمولی</option>
+                      <option value="math">آلارم ریاضی</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button 
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                  >
+                    ذخیره و ثبت عادت همیشگی
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Form B: Once-off Today/Tomorrow Tasks */}
+            <div className={`p-4 border rounded-2xl space-y-3 shadow-inner ${
+              darkMode ? 'bg-slate-950/40 border-slate-850' : 'bg-white border-zinc-150'
+            }`}>
+              <div className="flex items-center justify-between border-b pb-2 border-indigo-100/10">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="text-indigo-455" size={16} />
+                  <h4 className={`text-xs font-black ${darkMode ? 'text-indigo-400' : 'text-slate-800'}`}>۲. ثبت وظیفه کاری موقت (امروز یا فردا)</h4>
+                </div>
+                <div className="flex border rounded-lg p-0.5 bg-slate-900/10" dir="ltr">
+                  <button 
+                    type="button"
+                    onClick={() => setTaskDay('today')}
+                    className={`px-2.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
+                      taskDay === 'today' ? 'bg-indigo-600 text-white shadow' : 'text-slate-450 hover:text-slate-200'
+                    }`}
+                  >
+                    امروز
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setTaskDay('tomorrow')}
+                    className={`px-2.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
+                      taskDay === 'tomorrow' ? 'bg-indigo-600 text-white shadow' : 'text-slate-455 hover:text-slate-200'
+                    }`}
+                  >
+                    فردا
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleAddTaskSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-slate-400 text-[10px] mb-1 font-semibold">شرح فعالیت یا کار مجزا *</label>
+                  <input 
+                    type="text" 
+                    placeholder="مثلا: پرداخت صورت حساب، تحویل مستندات به مهندس معامله‌گر..."
+                    required
+                    value={taskTitle} 
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                    className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:border-indigo-500 ${
+                      darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200'
+                    }`} 
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-[9px]">
+                  <div>
+                    <label className="block text-slate-400 mb-1">ساعت انجام</label>
+                    <input 
+                      type="time" 
+                      value={taskTime} 
+                      onChange={(e) => setTaskTime(e.target.value)}
+                      className={`w-full p-1.5 border rounded-lg focus:outline-none font-mono text-center text-xs ${
+                        darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
+                      }`} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">ددلاین مهار</label>
+                    <input 
+                      type="time" 
+                      value={deadlineTime} 
+                      onChange={(e) => setDeadlineTime(e.target.value)}
+                      className={`w-full p-1.5 border rounded-lg focus:outline-none font-mono text-center text-xs ${
+                        darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
+                      }`} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">آلارم تلفن همراه</label>
+                    <select
+                      value={alarmSelection}
+                      onChange={(e: any) => setAlarmSelection(e.target.value)}
+                      className={`w-full p-1.5 border rounded-lg focus:outline-none font-sans text-[10px] text-center ${
+                        darkMode ? 'bg-slate-900 border-slate-700 text-slate-205' : 'bg-white border-zinc-200 text-slate-705'
+                      }`}
+                    >
+                      <option value="none">بدون آلارم</option>
+                      <option value="notification">ثبت اعلان</option>
+                      <option value="normal">آلارم معمولی</option>
+                      <option value="math">آلارم ریاضی</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button 
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+                  >
+                    ذخیره و ثبت تسک مجزا
+                  </button>
+                </div>
+              </form>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
       {/* Grid structure */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Module 1: Daily Habits List & Completion stats */}
         <div className={`p-5 border rounded-2xl shadow-sm space-y-4 flex flex-col justify-between transition-colors ${
-          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-150'
+          darkMode ? 'bg-slate-905 border-slate-800' : 'bg-white border-zinc-150'
         }`}>
           <div className="space-y-4">
             <div className={`border-b pb-2 flex justify-between items-center ${
@@ -595,7 +814,7 @@ export default function HabitsSection({
               darkMode ? 'bg-slate-950/60 border-slate-850' : 'bg-zinc-50 border-zinc-100'
             }`}>
               <div>
-                <span className="text-[10px] text-slate-450 font-semibold block">پیشرفت کل عادات امروز</span>
+                <span className="text-[10px] text-slate-455 font-bold block">پیشرفت کل عادات امروز</span>
                 <span className="text-xs text-slate-400">{completedHabitsToday} از {totalHabits} عادت تکراری</span>
               </div>
               <div className="text-right">
@@ -603,146 +822,38 @@ export default function HabitsSection({
               </div>
             </div>
 
-            {/* Habit registry Form */}
-            <form onSubmit={handleAddHabitSubmit} className="space-y-2 border-b pb-3 border-indigo-100/10">
-              <div className="flex gap-1.5">
-                <input 
-                  type="text" 
-                  placeholder="ثبت عادت جدید، مثلا: بیدارباش ۶ صبح"
-                  value={habitTitle}
-                  onChange={(e) => setHabitTitle(e.target.value)}
-                  className={`flex-1 p-2 border rounded-lg text-xs focus:outline-none focus:border-indigo-500 ${
-                    darkMode ? 'bg-slate-900 border-slate-700 text-white font-sans' : 'bg-white border-zinc-200 text-slate-905'
-                  }`}
-                />
-                <button 
-                  type="submit"
-                  className="px-3.5 bg-indigo-650 hover:bg-indigo-755 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-sm"
-                >
-                  افزودن
-                </button>
-              </div>
-
-              {/* Extra Optional fields for Habit */}
-              <div className="grid grid-cols-3 gap-1 text-[9px]">
-                <div>
-                  <label className="block text-slate-450 mb-0.5">ساعت انجام</label>
-                  <input 
-                    type="time" 
-                    value={habitTime}
-                    onChange={(e) => setHabitTime(e.target.value)}
-                    className={`w-full p-1 border rounded focus:outline-none font-mono ${
-                      darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-950'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-450 mb-0.5">ددلاین نهایی</label>
-                  <input 
-                    type="time" 
-                    value={habitDeadlineTime}
-                    onChange={(e) => setHabitDeadlineTime(e.target.value)}
-                    className={`w-full p-1 border rounded focus:outline-none font-mono ${
-                      darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-950'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-450 mb-0.5">نوع زنگ خواب‌شکن</label>
-                  <select
-                    value={habitAlarmSelection}
-                    onChange={(e: any) => setHabitAlarmSelection(e.target.value)}
-                    className={`w-full p-1 border rounded focus:outline-none font-sans ${
-                      darkMode ? 'bg-slate-950 border-slate-705 text-white' : 'bg-white border-zinc-200 text-slate-705'
-                    }`}
-                  >
-                    <option value="none" className={darkMode ? 'bg-slate-900' : ''}>بدون آلارم</option>
-                    <option value="notification" className={darkMode ? 'bg-slate-900' : ''}>اعلان وبسایت</option>
-                    <option value="normal" className={darkMode ? 'bg-slate-900' : ''}>زنگ معمولی</option>
-                    <option value="math" className={darkMode ? 'bg-slate-900 text-white' : ''}>زنگ ریاضی هوشمند</option>
-                  </select>
-                </div>
-              </div>
-            </form>
-
-            {/* Habits listing info */}
-            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-0.5">
+            {/* Compact Habits management list */}
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[10px] text-slate-405 block font-bold">عادت‌های فعال روزانه و مدیریت آن‌ها:</span>
               {habits.length === 0 ? (
-                <div className="p-6 text-center text-slate-500 text-xs">تاکنون تسک عادتی تکرار شونده‌ای اضافه نکرده‌اید.</div>
+                <p className="text-[10px] text-slate-500 italic">عادت فعالی تعریف نشده است.</p>
               ) : (
-                habits.map(h => {
-                  const isCompletedToday = !!h.history[todayISO];
-                  return (
-                    <div key={h.id} className={`flex items-center justify-between p-2.5 border rounded-xl hover:bg-slate-900/10 transition-all ${
-                      darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-slate-50/20 border-slate-100'
+                <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5 font-sans">
+                  {habits.map(h => (
+                    <div key={h.id} className={`flex items-center justify-between p-1.5 rounded-lg border text-[10px] font-sans ${
+                      darkMode ? 'bg-slate-950/20 border-slate-850 text-slate-350' : 'bg-slate-50/50 border-slate-100 text-slate-705'
                     }`}>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onToggleHabit(h.id, todayISO)}
-                          className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors cursor-pointer ${
-                            isCompletedToday 
-                              ? 'bg-indigo-600 border-indigo-600 text-white' 
-                              : (darkMode ? 'border-slate-700 bg-slate-900 hover:border-indigo-400' : 'border-zinc-300 bg-white hover:border-zinc-800')
-                          }`}
-                        >
-                          {isCompletedToday && <Check size={12} />}
-                        </button>
-                        
-                        <div>
-                          <div className={`text-xs ${
-                            isCompletedToday ? 'line-through text-slate-500' : (darkMode ? 'text-slate-250 font-semibold' : 'text-slate-700 font-medium')
-                          }`}>
-                            {h.title}
-                          </div>
-                          
-                          {/* Time, deadline, alarm specs for Habit */}
-                          {(h.time || h.deadlineTime || (h.alarmType && h.alarmType !== 'none')) && (
-                            <div className="flex items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
-                              {h.time && <span className="font-mono">{h.time}</span>}
-                              {h.deadlineTime && <span className="font-mono text-rose-500 font-bold">مهلت: {h.deadlineTime}</span>}
-                              {h.alarmType && h.alarmType !== 'none' && (
-                                <span className="text-indigo-400 font-bold flex items-center gap-0.5">
-                                  🔔 {h.alarmType === 'math' ? 'ریاضی' : h.alarmType === 'normal' ? 'معمولی' : 'اعلان'}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {/* Simulation helper button for habit alarm */}
-                        {!isCompletedToday && h.alarmType && h.alarmType !== 'none' && (
-                          <button
-                            type="button"
-                            onClick={() => handleTriggerAlarm(h as any)}
-                            className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
-                              darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-indigo-700 font-semibold'
-                            }`}
-                            title="تست زنگ هشدار عادت"
-                          >
-                            <BellRing size={10} />
-                          </button>
-                        )}
-
-                        <button 
-                          onClick={() => onDeleteHabit(h.id)}
-                          className={`p-1 rounded transition-colors cursor-pointer ${
-                            darkMode ? 'text-slate-500 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
+                      <span className="truncate font-semibold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" /> {h.title}
+                      </span>
+                      <button 
+                        onClick={() => onDeleteHabit(h.id)}
+                        className={`p-1 hover:text-rose-500 transition-colors cursor-pointer ${
+                          darkMode ? 'text-slate-550' : 'text-slate-400'
+                        }`}
+                        title="حذف کلی عادت"
+                      >
+                        <Trash2 size={10} />
+                      </button>
                     </div>
-                  );
-                })
+                  ))}
+                </div>
               )}
             </div>
           </div>
 
           {/* Minimalist Grid indicator showing dynamic monthly performance calendar */}
-          <div className={`pt-3 border-t transition-colors ${darkMode ? 'border-slate-800' : 'border-zinc-100'}`}>
+          <div className={`pt-3 border-t transition-colors ${darkMode ? 'border-slate-800' : 'border-zinc-101'}`}>
             {renderMonthPerformanceGrid()}
           </div>
         </div>
@@ -754,116 +865,42 @@ export default function HabitsSection({
           <div className={`border-b pb-2 flex justify-between items-center ${
             darkMode ? 'border-slate-800' : 'border-zinc-105'
           }`}>
-            <h3 className="text-sm font-bold font-display">برنامه‌ریزی تسک‌ها (امروز و فردا)</h3>
-            <span className="text-[10px] text-slate-450 leading-tight select-none">همراه با ددلاین و شبیه‌ساز نوع هشدار تسک</span>
+            <h3 className="text-sm font-bold font-display">لیست کارهای روزانه (امروز و فردا)</h3>
+            <span className="text-[10px] text-slate-452 font-semibold">تعهد همیشگی با آلارم</span>
           </div>
-
-          {/* Tasks addition Form mapping dynamic alarms dropdown selectors */}
-          <form onSubmit={handleAddTaskSubmit} className={`grid grid-cols-1 md:grid-cols-3 gap-2.5 p-3.5 rounded-xl text-xs ${
-            darkMode ? 'bg-slate-950/40 border border-slate-850' : 'bg-zinc-50 border-zinc-100'
-          }`}>
-            <div className="md:col-span-3 flex justify-between border-b pb-1 mt-0.5 items-center border-indigo-100/10">
-              <span className="font-semibold text-slate-400 text-[10px]">یادداشت وظیفه کاری تعیین زمان شده</span>
-              <div className="flex border rounded-lg p-0.5" dir="ltr">
-                <button 
-                  type="button"
-                  onClick={() => setTaskDay('today')}
-                  className={`px-2.5 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
-                    taskDay === 'today' ? 'bg-indigo-600 text-white' : 'text-slate-400'
-                  }`}
-                >
-                  برای امروز (Today)
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setTaskDay('tomorrow')}
-                  className={`px-2.5 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
-                    taskDay === 'tomorrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'
-                  }`}
-                >
-                  برای فردا (Tomorrow)
-                </button>
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-slate-450 mb-1">شرح کار / وظیفه *</label>
-              <input 
-                type="text" 
-                placeholder="مثلا: تحلیل کندل‌استیک روزانه دلار"
-                required
-                value={taskTitle} 
-                onChange={(e) => setTaskTitle(e.target.value)}
-                className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 text-xs ${
-                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200'
-                }`} 
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-450 mb-1">ساعت انجام (اختیاری)</label>
-              <input 
-                type="time" 
-                value={taskTime} 
-                onChange={(e) => setTaskTime(e.target.value)}
-                className={`w-full p-2 border rounded-lg focus:outline-none font-mono text-xs ${
-                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
-                }`} 
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-450 mb-1">ساعت ددلاین نهایی (تخریب تسک)</label>
-              <input 
-                type="time" 
-                value={deadlineTime} 
-                onChange={(e) => setDeadlineTime(e.target.value)}
-                className={`w-full p-2 border rounded-lg focus:outline-none font-mono text-xs ${
-                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-900'
-                }`} 
-                placeholder="18:00"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-slate-450 mb-1">نوع هشدار آلارم تلفن *</label>
-              <select
-                value={alarmSelection}
-                onChange={(e: any) => setAlarmSelection(e.target.value)}
-                className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-550 text-xs ${
-                  darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-zinc-200 text-slate-700'
-                }`}
-              >
-                <option value="none" className={darkMode ? 'bg-slate-900' : ''}>بدون آلارم (none)</option>
-                <option value="notification" className={darkMode ? 'bg-slate-900' : ''}>فقط نوتیفکشن حبابی (Notification)</option>
-                <option value="normal" className={darkMode ? 'bg-slate-900' : ''}>زنگ خواب‌شکن معمولی (Normal Alarm)</option>
-                <option value="math" className={darkMode ? 'bg-slate-900' : ''}>زنگ ریاضی هوشمند خواب‌شکن قطعی (Math Puzzle Alarm)</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-3 flex justify-end pt-1">
-              <button 
-                type="submit"
-                className="px-5 py-2 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors cursor-pointer shadow-sm text-xs"
-              >
-                ذخیره کار تعیین زمان شده
-              </button>
-            </div>
-          </form>
 
           {/* Render Active Cards with Today and Tomorrow tasks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
             
             {/* TODAY COLUMN */}
-            <div className={`p-3 border rounded-xl transition-colors ${
+            <div className={`p-3 border rounded-xl transition-all shadow-md ${
               darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-zinc-50/20 border-zinc-150'
             }`}>
-              <h4 className={`text-xs font-bold border-b pb-1 mb-2 ${darkMode ? 'text-slate-300 border-slate-800' : 'text-slate-800 border-zinc-100'}`}>لیست کارهای امروز</h4>
+              <div className="flex items-center justify-between border-b pb-1.5 mb-2.5">
+                <h4 className={`text-xs font-black flex items-center gap-1 ${darkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                  ☀️ لیست کارهای امروز
+                </h4>
+                
+                {tasks.filter(t => t.day === 'today' && !t.archived).length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (confirm('آیا از اتمام روز و انتقال تسک‌های امروز به بایگانی نهایی مطمئن هستید؟')) {
+                        onArchiveTodayTasks();
+                      }
+                    }}
+                    className="flex items-center gap-1 text-[9px] px-2 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-500 border border-emerald-500/20 rounded-lg transition-all font-bold cursor-pointer"
+                    title="بایگانی تاریخی تسک‌های امروز با ساعات انجام"
+                  >
+                    <Archive size={10} /> پایان تسک‌های امروز
+                  </button>
+                )}
+              </div>
+
               <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
-                {tasks.filter(t => t.day === 'today').length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای امروز ثبت نشده است.</div>
+                {tasks.filter(t => t.day === 'today' && !t.archived).length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای امروز در لیست فعال وجود ندارد.</div>
                 ) : (
-                  tasks.filter(t => t.day === 'today').map(task => (
+                  tasks.filter(t => t.day === 'today' && !t.archived).map(task => (
                     <div 
                       key={task.id} 
                       className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
@@ -880,10 +917,13 @@ export default function HabitsSection({
                           className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
                             task.completed 
                               ? 'bg-indigo-650 border-indigo-600 text-white' 
-                              : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-350 bg-white hover:border-zinc-850')
+                              : task.missed
+                                ? 'border-rose-450 bg-rose-500/10 text-rose-500 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
+                                : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-350 bg-white hover:border-zinc-850')
                           }`}
+                          title={task.missed ? 'ثبت و تکمیل تسک منقضی شده' : 'تغییر وضعیت انجام تسک'}
                         >
-                          {task.completed && <Check size={10} />}
+                          {task.completed ? <Check size={10} /> : task.missed ? <span className="font-extrabold text-[7px]">✖</span> : null}
                         </button>
                         
                         <div>
@@ -891,12 +931,17 @@ export default function HabitsSection({
                             {task.title}
                           </div>
                           
-                          <div className="flex items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
                             {task.time && <span className="font-mono">ساعت {task.time}</span>}
                             {task.deadlineTime && <span className="font-mono text-zinc-500 font-bold">مهلت: {task.deadlineTime}</span>}
+                            {task.completed && task.completedAt && (
+                              <span className="text-emerald-500 bg-emerald-500/10 px-1 rounded-md font-bold font-mono">
+                                ✓ تایید: {task.completedAt}
+                              </span>
+                            )}
                             {task.alarmType && task.alarmType !== 'none' && (
                               <span className="text-indigo-400 font-bold">
-                                • هشدار {task.alarmType === 'math' ? 'ریاضی' : task.alarmType === 'normal' ? 'معمولی' : 'اعلان حبابی'}
+                                • زنگ {task.alarmType === 'math' ? 'محاسباتی' : task.alarmType === 'normal' ? 'معمولی' : 'اعلان'}
                               </span>
                             )}
                           </div>
@@ -923,10 +968,19 @@ export default function HabitsSection({
                         )}
 
                         <button 
-                          onClick={() => onDeleteTask(task.id)}
+                          onClick={() => {
+                            if (!task.completed) {
+                              alert('امکان حذف تسک‌های غیرآماده (منقضی شده یا فعال) قبل از ثبت نهایی وجود ندارد! برای انضباط شخصی، شما موظف هستید ابتدا تسک را با زدن تیک، وضعیت آن را به ثبت/تکمیل نهایی تغییر دهید تا منوی حذف برای آن فعال گردد.');
+                              return;
+                            }
+                            onDeleteTask(task.id);
+                          }}
                           className={`p-1 rounded transition-colors cursor-pointer ${
-                            darkMode ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'
+                            !task.completed
+                              ? 'text-slate-350/30 dark:text-slate-700/30 cursor-not-allowed opacity-40'
+                              : (darkMode ? 'text-slate-500 hover:text-rose-500' : 'text-slate-400 hover:text-rose-500')
                           }`}
+                          title={!task.completed ? 'تنها تسک‌های ثبت و تکمیل شده قابل حذف هستند' : 'حذف این تسک'}
                         >
                           <Trash2 size={11} />
                         </button>
@@ -938,15 +992,20 @@ export default function HabitsSection({
             </div>
 
             {/* TOMORROW COLUMN */}
-            <div className={`p-3 border rounded-xl transition-colors ${
+            <div className={`p-3 border rounded-xl transition-all shadow-md ${
               darkMode ? 'bg-slate-950/20 border-slate-800' : 'bg-zinc-50/20 border-zinc-150'
             }`}>
-              <h4 className={`text-xs font-bold border-b pb-1 mb-2 ${darkMode ? 'text-slate-300 border-slate-800' : 'text-slate-800 border-zinc-100'}`}>لیست کارهای فردا</h4>
+              <div className="border-b pb-1.5 mb-2.5">
+                <h4 className={`text-xs font-black flex items-center gap-1 ${darkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                  🌙 لیست کارهای فردا
+                </h4>
+              </div>
+
               <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
-                {tasks.filter(t => t.day === 'tomorrow').length === 0 ? (
+                {tasks.filter(t => t.day === 'tomorrow' && !t.archived).length === 0 ? (
                   <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای فردا ثبت نشده است.</div>
                 ) : (
-                  tasks.filter(t => t.day === 'tomorrow').map(task => (
+                  tasks.filter(t => t.day === 'tomorrow' && !t.archived).map(task => (
                     <div 
                       key={task.id} 
                       className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
@@ -960,11 +1019,14 @@ export default function HabitsSection({
                           onClick={() => onToggleTask(task.id)}
                           className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
                             task.completed 
-                              ? 'bg-indigo-650 border-indigo-600' 
-                              : (darkMode ? 'border-slate-700 bg-slate-950' : 'border-zinc-300 bg-white')
+                              ? 'bg-indigo-650 border-indigo-600 text-white' 
+                              : task.missed
+                                ? 'border-rose-450 bg-rose-500/10 text-rose-500 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
+                                : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-300 bg-white hover:border-zinc-800')
                           }`}
+                          title={task.missed ? 'ثبت و تکمیل تسک منقضی شده' : 'تغییر وضعیت انجام تسک'}
                         >
-                          {task.completed && <Check size={10} />}
+                          {task.completed ? <Check size={10} /> : task.missed ? <span className="font-extrabold text-[7px]">✖</span> : null}
                         </button>
                         
                         <div>
@@ -980,10 +1042,19 @@ export default function HabitsSection({
 
                       <div className="flex gap-1">
                         <button 
-                          onClick={() => onDeleteTask(task.id)}
+                          onClick={() => {
+                            if (!task.completed) {
+                              alert('امکان حذف تسک‌های غیرآماده (منقضی شده یا فعال) قبل از ثبت نهایی وجود ندارد! برای انضباط شخصی، شما موظف هستید ابتدا تسک را با زدن تیک، وضعیت آن را به ثبت/تکمیل نهایی تغییر دهید تا منوی حذف برای آن فعال گردد.');
+                              return;
+                            }
+                            onDeleteTask(task.id);
+                          }}
                           className={`p-1 rounded transition-colors cursor-pointer ${
-                            darkMode ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'
+                            !task.completed
+                              ? 'text-slate-350/30 dark:text-slate-700/30 cursor-not-allowed opacity-40'
+                              : (darkMode ? 'text-slate-500 hover:text-rose-500' : 'text-slate-400 hover:text-rose-500')
                           }`}
+                          title={!task.completed ? 'تنها تسک‌های ثبت و تکمیل شده قابل حذف هستند' : 'حذف این تسک'}
                         >
                           <Trash2 size={11} />
                         </button>
@@ -994,6 +1065,94 @@ export default function HabitsSection({
               </div>
             </div>
 
+          </div>
+
+          {/* HISTORICAL WORK ARCHIVE PANEL */}
+          <div className={`p-4 border rounded-2xl transition-all shadow-md ${
+            darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
+          } mt-4 text-right`} dir="rtl">
+            <div className="flex items-center justify-between border-b pb-2 mb-3">
+              <div className="flex items-center gap-1.5">
+                <Archive className="text-emerald-500 shrink-0" size={15} />
+                <h4 className={`text-xs font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                  بایگانی تاریخی تسک‌های خاتمه یافته (طرح کارنامه موفقیت)
+                </h4>
+              </div>
+              <span className="text-[10px] text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded-lg font-bold font-mono">
+                {tasks.filter(t => t.archived).length} تسک کل آرشیو شده
+              </span>
+            </div>
+
+            {tasks.filter(t => t.archived).length === 0 ? (
+              <div className="p-6 text-center text-slate-400 text-[11px] leading-relaxed">
+                <History size={26} className="mx-auto text-slate-500 mb-2 opacity-50 animate-pulse" />
+                هیچ تسکی هنوز آرشیو نشده است. در انتهای روز با لمس کلید <span className="font-bold text-emerald-500">«پایان تسک‌های امروز»</span> در کادر کارهای روزانه، تمام موارد خاتمه‌یافته یا منقضی شده همراه با <span className="font-bold text-indigo-400">ساعت دقیق تایید تیک کاربر</span> در این کادر جاودانه ثبت می‌شوند.
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[300px] overflow-y-auto pr-0.5">
+                {Object.entries(
+                  tasks.filter(t => t.archived).reduce<{ [date: string]: DayTask[] }>((acc, task) => {
+                    const dateKey = task.archivedAt || task.createdAt || 'ناشناس';
+                    if (!acc[dateKey]) acc[dateKey] = [];
+                    acc[dateKey].push(task);
+                    return acc;
+                  }, {})
+                ).sort((a, b) => b[0].localeCompare(a[0]))
+                .map(([archiveDate, groupTasks]) => (
+                  <div key={archiveDate} className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-slate-400 mb-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                      آرشیو تاریخ: <span className="font-mono text-indigo-400">{archiveDate}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {groupTasks.map(t => (
+                        <div 
+                          key={t.id}
+                          className={`p-2.5 rounded-xl border text-[11px] flex justify-between items-center transition-all ${
+                            t.completed 
+                              ? (darkMode ? 'bg-emerald-950/20 border-emerald-900/40 text-slate-300' : 'bg-emerald-50/40 border-emerald-100 text-slate-800')
+                              : (darkMode ? 'bg-rose-950/20 border-rose-900/40 text-slate-350' : 'bg-rose-50/40 border-rose-100 text-slate-800')
+                          }`}
+                        >
+                          <div className="flex flex-col gap-0.5 leading-relaxed">
+                            <span className={`font-semibold ${t.completed ? 'line-through text-slate-450 dark:text-slate-500' : ''}`}>
+                              {t.title}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[8.5px] text-slate-400 mt-0.5">
+                              {t.time && <span className="font-mono">ساعت {t.time}</span>}
+                              {t.deadlineTime && <span className="font-mono font-bold text-rose-500/70">مهلت مهار: {t.deadlineTime}</span>}
+                              {t.alarmType && t.alarmType !== 'none' && (
+                                <span className="font-bold text-indigo-400">هشدار ({t.alarmType === 'math' ? 'ریاضی' : 'معمولی'})</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1 shrink-0 text-[10px] font-black">
+                            {t.completed ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-emerald-500 flex items-center gap-0.5">
+                                  ✓ موفق
+                                </span>
+                                {t.completedAt && (
+                                  <span className="text-[8px] font-mono text-emerald-500 mt-0.5 bg-emerald-500/10 px-1.5 py-0.5 rounded font-bold">
+                                    تایید: {t.completedAt}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-rose-500 flex items-center gap-0.5">
+                                ✖ منقضی شده
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Module 3: Historical Reminder Log */}
