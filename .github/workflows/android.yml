@@ -18,10 +18,22 @@ jobs:
         java-version: '17'
         distribution: 'zulu'
 
-    - name: Install Node.js Dependencies
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Dependencies
       run: |
-        npm install
+        npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+    - name: Build Web Project (Vite)
+      run: |
         npm run build
+
+    - name: Add Android Platform if Missing
+      run: |
+        npx cap add android || true
 
     - name: Sync Capacitor
       run: |
