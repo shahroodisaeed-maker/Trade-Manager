@@ -5,6 +5,23 @@ import {
   Plus, Trash2, Calendar, User, FileText, Percent, 
   Check, Award, AlertCircle, HelpCircle, ArrowRight, Edit3
 } from 'lucide-react';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+
+const CATEGORY_COLORS: { [key: string]: string } = {
+  'مسکن و اجاره': '#f43f5e', // rose-500
+  'خوراک و معیشت': '#f59e0b', // amber-500
+  'اموزش و توسعه': '#3b82f6', // blue-500
+  'تردد و حمل‌و‌نقل': '#06b6d4', // cyan-500
+  'تفریح و سرگرمی': '#a855f7', // purple-500
+  'درمان و سلامت': '#10b981', // emerald-500
+  'تجارت و سرمایه': '#6366f1', // indigo-500
+  'دیگر هزینه‌ها': '#6b7280', // gray-500
+};
+
+const COLOR_PALETTE = [
+  '#f43f5e', '#f59e0b', '#3b82f6', '#06b6d4', '#a855f7', '#10b981', '#6366f1',
+  '#ec4899', '#14b8a6', '#f97316', '#84cc16'
+];
 
 interface FinancialSectionProps {
   transactions: ExpenseIncomeItem[];
@@ -206,6 +223,40 @@ export default function FinancialSection({
   };
 
   const ana = getMonthlyPerformanceData();
+
+  const getMonthlyExpensesByCategory = () => {
+    const monthExpenses = transactions.filter(
+      t => t.type === 'expense' && t.date.startsWith(selectedAnalysisMonth)
+    );
+    const categoryTotals: { [key: string]: number } = {};
+    monthExpenses.forEach(t => {
+      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+    });
+    return Object.entries(categoryTotals).map(([name, value]) => ({
+      name,
+      value
+    })).sort((a, b) => b.value - a.value);
+  };
+
+  const getSliceColor = (categoryName: string, index: number) => {
+    return CATEGORY_COLORS[categoryName] || COLOR_PALETTE[index % COLOR_PALETTE.length];
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className={`p-2.5 rounded-xl border text-right shadow-md text-[10px] sm:text-xs ${
+          darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 font-sans' : 'bg-white border-zinc-200 text-slate-900 font-sans'
+        }`}>
+          <p className="font-extrabold">{payload[0].name}</p>
+          <p className="font-mono font-bold text-rose-500 mt-0.5">
+            {Number(payload[0].value).toLocaleString()} تومان
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   // Calculate weekly portfolio history dynamically based on Saturday aggregation
   const getWeeklyPortfolioHistory = () => {
@@ -516,78 +567,183 @@ export default function FinancialSection({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-          {/* Income vs Expenses comparative bars */}
-          <div className="md:col-span-2 space-y-3">
-            <div>
-              <div className="flex justify-between text-[11px] mb-1 font-semibold">
-                <span className="text-slate-500">جمع درآمدهای ثبت‌شده دوره:</span>
-                <span className="text-emerald-500 font-mono">+{ana.income.toLocaleString()} تومان</span>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          {/* Right Column (Statistics and balance indicators) */}
+          <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              {/* Income vs Expenses comparative bars */}
+              <div className="md:col-span-2 space-y-3">
+                <div>
+                  <div className="flex justify-between text-[11px] mb-1 font-semibold">
+                    <span className="text-slate-500">جمع درآمدهای ثبت‌شده دوره:</span>
+                    <span className="text-emerald-500 font-mono">+{ana.income.toLocaleString()} تومان</span>
+                  </div>
+                  <div className="w-full bg-slate-200/40 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-500 rounded-full transition-all" 
+                      style={{ width: `${ana.income + ana.expense > 0 ? (ana.income / (ana.income + ana.expense)) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-[11px] mb-1 font-semibold">
+                    <span className="text-slate-500">جمع هزینه‌ها و مخارج زندگی:</span>
+                    <span className="text-rose-500 font-mono">-{ana.expense.toLocaleString()} تومان</span>
+                  </div>
+                  <div className="w-full bg-slate-200/40 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-rose-500 rounded-full transition-all" 
+                      style={{ width: `${ana.income + ana.expense > 0 ? (ana.expense / (ana.income + ana.expense)) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="w-full bg-slate-200/40 h-2 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-emerald-500 rounded-full transition-all" 
-                  style={{ width: `${ana.income + ana.expense > 0 ? (ana.income / (ana.income + ana.expense)) * 100 : 0}%` }}
-                />
+
+              {/* Glowing Badged status column - Requested by User */}
+              <div className={`p-4 rounded-xl border text-center space-y-2 h-full flex flex-col justify-center ${
+                ana.balance >= 0 
+                  ? (darkMode ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300' : 'bg-emerald-50/50 border-emerald-100 text-emerald-800')
+                  : (darkMode ? 'bg-rose-950/20 border-rose-900/40 text-rose-300' : 'bg-rose-50/50 border-rose-100 text-rose-800')
+              }`}>
+                <div className="text-[10px] text-slate-450 font-bold">تراز عملیاتی نهایی ماه:</div>
+                
+                <div className="text-sm font-black font-mono tracking-wide">
+                  {ana.balance >= 0 ? '+' : ''}{ana.balance.toLocaleString()} تومان
+                </div>
+
+                {ana.balance >= 0 ? (
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-500 self-center">
+                    🟢 تراز مالی مثبت و سودده
+                  </span>
+                ) : (
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/20 text-rose-500 animate-pulse self-center">
+                    🔴 تراز منفی و زیانده دوره
+                  </span>
+                )}
+
+                <p className="text-[8px] text-slate-400 leading-normal font-sans">
+                  {ana.balance >= 0 
+                    ? 'خوشبختانه عملکرد درآمدی تراز خالص شما را مثبت نگاه داشته است.' 
+                    : 'توجه: مخارج شما در این دوره پیشی گرفته است، نسبت ترید بر خریدهای غیرضروری افزایش یابد.'}
+                </p>
               </div>
             </div>
 
-            <div>
-              <div className="flex justify-between text-[11px] mb-1 font-semibold">
-                <span className="text-slate-500">جمع هزینه‌ها و مخارج زندگی:</span>
-                <span className="text-rose-500 font-mono">-{ana.expense.toLocaleString()} تومان</span>
-              </div>
-              <div className="w-full bg-slate-200/40 h-2 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-rose-500 rounded-full transition-all" 
-                  style={{ width: `${ana.income + ana.expense > 0 ? (ana.expense / (ana.income + ana.expense)) * 100 : 0}%` }}
-                />
+            {/* Previous Month comparative metric banner */}
+            <div className={`p-2.5 border rounded-xl flex items-center justify-between text-[10px] ${
+              darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-zinc-50 border-zinc-100'
+            }`}>
+              <span className="text-slate-450 font-medium">مقایسه نوسان تراز با ماه قبل ({ana.prevMonthStr}):</span>
+              <div className="flex gap-2">
+                <span className="text-slate-450">ترازش: <strong className="font-mono">{ana.prevBalance.toLocaleString()} تومان</strong></span>
+                {ana.balance >= ana.prevBalance ? (
+                  <span className="text-emerald-500 font-bold">▲ بهبود برآیند سود</span>
+                ) : (
+                  <span className="text-rose-500 font-bold">▼ نزول برآیند سود</span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Glowing Badged status column - Requested by User */}
-          <div className={`p-4 rounded-xl border text-center space-y-2 ${
-            ana.balance >= 0 
-              ? (darkMode ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300' : 'bg-emerald-50/50 border-emerald-100 text-emerald-800')
-              : (darkMode ? 'bg-rose-950/20 border-rose-900/40 text-rose-300' : 'bg-rose-50/50 border-rose-100 text-rose-800')
+          {/* Left Column (Pie Chart expense breakdown) */}
+          <div className={`lg:col-span-5 p-4 rounded-xl border flex flex-col justify-between ${
+            darkMode ? 'bg-slate-950/30 border-slate-850' : 'bg-slate-50/50 border-zinc-150'
           }`}>
-            <div className="text-[10px] text-slate-450 font-bold">تراز عملیاتی نهایی ماه:</div>
-            
-            <div className="text-sm font-black font-mono tracking-wide">
-              {ana.balance >= 0 ? '+' : ''}{ana.balance.toLocaleString()} تومان
+            <div className="border-b border-indigo-100/10 pb-2 mb-2 flex justify-between items-center">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-350">تفکیک هزینه‌های ماهانه (Pie Chart)</span>
+              <span className="text-[9px] text-rose-400 font-bold bg-rose-500/10 px-2.5 py-0.5 rounded-full">بر اساس دسته</span>
             </div>
 
-            {ana.balance >= 0 ? (
-              <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-500">
-                🟢 تراز مالی مثبت و سودده
-              </span>
-            ) : (
-              <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/20 text-rose-500 animate-pulse">
-                🔴 تراز منفی و زیانده دوره
-              </span>
-            )}
+            {(() => {
+              const expenseBreakdownData = getMonthlyExpensesByCategory();
+              const totalMonthlyExpense = expenseBreakdownData.reduce((sum, item) => sum + item.value, 0);
 
-            <p className="text-[8px] text-slate-400 leading-normal font-sans">
-              {ana.balance >= 0 
-                ? 'خوشبختانه عملکرد درآمدی تراز خالص شما را مثبت نگاه داشته است.' 
-                : 'توجه: مخارج شما در این دوره پیشی گرفته است، نسبت ترید بر خریدهای غیرضروری افزایش یابد.'}
-            </p>
-          </div>
-        </div>
+              if (expenseBreakdownData.length === 0) {
+                return (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 min-h-[140px]">
+                    <div className="w-10 h-10 rounded-full border border-dashed border-slate-300 dark:border-slate-800 flex items-center justify-center mb-2 text-slate-400 font-bold text-sm">
+                      ٪
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400">فاقد هزینه ثبت‌شده در این ماه</div>
+                    <p className="text-[9px] text-slate-500 mt-1 leading-relaxed max-w-[200px]">
+                      در ماه انتخاب‌شده هیچ تراکنش هزینه‌ای تعریف نشده است.
+                    </p>
+                  </div>
+                );
+              }
 
-        {/* Previous Month comparative metric banner */}
-        <div className={`p-2.5 border rounded-xl flex items-center justify-between text-[10px] ${
-          darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-zinc-50 border-zinc-100'
-        }`}>
-          <span className="text-slate-450 font-medium">مقایسه نوسان تراز با ماه قبل ({ana.prevMonthStr}):</span>
-          <div className="flex gap-2">
-            <span className="text-slate-400">ترازش: <strong className="font-mono">{ana.prevBalance.toLocaleString()} تومان</strong></span>
-            {ana.balance >= ana.prevBalance ? (
-              <span className="text-emerald-500 font-bold">▲ بهبود برآیند سود</span>
-            ) : (
-              <span className="text-rose-500 font-bold">▼ نزول برآیند سود</span>
-            )}
+              return (
+                <div className="flex-1 flex flex-col sm:flex-row items-center gap-4 justify-center">
+                  {/* Recharts Pie Chart Container */}
+                  <div className="w-full h-32 max-w-[130px] relative shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={expenseBreakdownData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={36}
+                          outerRadius={54}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {expenseBreakdownData.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={getSliceColor(entry.name, index)} 
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-[8px] text-slate-400 font-bold">کل مخارج</span>
+                      <span className="text-[9px] font-black font-mono text-rose-505 mt-0.5">
+                        {totalMonthlyExpense >= 1000000 
+                          ? `${(totalMonthlyExpense / 1000000).toFixed(1)} م` 
+                          : totalMonthlyExpense.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dynamic Category Lists with percentages and labels */}
+                  <div className="flex-1 space-y-1.5 w-full text-[10px]">
+                    {expenseBreakdownData.slice(0, 5).map((entry, index) => {
+                      const percentage = totalMonthlyExpense > 0 
+                        ? Math.round((entry.value / totalMonthlyExpense) * 100) 
+                        : 0;
+                      const sliceColor = getSliceColor(entry.name, index);
+                      return (
+                        <div key={entry.name} className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-full shrink-0" 
+                              style={{ backgroundColor: sliceColor }} 
+                            />
+                            <span className="font-semibold text-slate-600 dark:text-slate-350 truncate max-w-[85px]" title={entry.name}>
+                              {entry.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 font-mono">
+                            <span className="text-slate-400 text-[9px]">({percentage}٪)</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-200">
+                              {entry.value.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {expenseBreakdownData.length > 5 && (
+                      <div className="text-[9px] text-slate-400 text-center border-t border-slate-200/10 pt-1">
+                        {`+ ${expenseBreakdownData.length - 5} دسته‌بندی هزینه دیگر`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

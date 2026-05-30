@@ -10,10 +10,11 @@ import FinancialSection from './components/FinancialSection';
 import HabitsSection from './components/HabitsSection';
 import IdeasSection from './components/IdeasSection';
 import GamesSection from './components/GamesSection';
+import SettingsSection from './components/SettingsSection';
 
 import { 
   BookOpen, Sparkles, DollarSign, Award, StickyNote, Gamepad2, 
-  Layers, Github, Compass, ToggleLeft, ToggleRight, Info, Sun, Moon
+  Layers, Github, Compass, ToggleLeft, ToggleRight, Info, Sun, Moon, Sliders
 } from 'lucide-react';
 
 import { Preferences } from '@capacitor/preferences';
@@ -21,7 +22,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapacitorApp } from '@capacitor/app';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'journal' | 'focus' | 'financial' | 'habits' | 'ideas' | 'games'>('journal');
+  const [activeTab, setActiveTab] = useState<'journal' | 'focus' | 'financial' | 'habits' | 'ideas' | 'games' | 'settings'>('journal');
 
   // Dark Mode State with localStorage persistence
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -655,6 +656,26 @@ export default function App() {
     setSerials(serials.filter(s => s.id !== id));
   };
 
+  const handleImportAllData = (data: any) => {
+    if (data.trades) setTrades(data.trades);
+    if (data.transactions) setTransactions(data.transactions);
+    if (data.assets) setAssets(data.assets);
+    if (data.loans) setLoans(data.loans);
+    if (data.debtClaims) setDebtClaims(data.debtClaims);
+    if (data.habits) setHabits(data.habits);
+    if (data.tasks) {
+      setTasks(data.tasks);
+      syncTaskNotifications(data.tasks);
+    }
+    if (data.reminders) {
+      setReminders(data.reminders);
+      syncReminderNotifications(data.reminders);
+    }
+    if (data.ideas) setIdeas(data.ideas);
+    if (data.games) setGames(data.games);
+    if (data.serials) setSerials(data.serials);
+  };
+
   // Sidebar navigation mapping helper
   const tabsConfig = [
     { key: 'journal', label: 'ژورنال معامله‌گری', description: 'ثبت ترید و فیلتر دقیق عملکرد', icon: <BookOpen size={16} /> },
@@ -662,7 +683,8 @@ export default function App() {
     { key: 'financial', label: 'برنامه‌ریزی اقتصادی', description: 'ویرایش دارایی، اقساط وام و دیون', icon: <DollarSign size={16} /> },
     { key: 'habits', label: 'دفتر عادات و تسک', description: 'تقویم عادات، نمودار عملکرد و زنگ هوشمند', icon: <Award size={16} /> },
     { key: 'ideas', label: 'صندوقچه‌ ایده‌ها', description: 'طرح، پیاده‌سازی و زمان‌سنج پیش‌رفت', icon: <StickyNote size={16} /> },
-    { key: 'games', label: 'قفسه بازی و فیلم', description: 'آرشیو دسته‌بندی سرگرمی و گیمینگ', icon: <Gamepad2 size={16} /> }
+    { key: 'games', label: 'قفسه بازی و فیلم', description: 'آرشیو دسته‌بندی سرگرمی و گیمینگ', icon: <Gamepad2 size={16} /> },
+    { key: 'settings', label: 'تنظیمات و پشتیبان‌گیری', description: 'دانلود فایل پشتیبان دیتابیس گوشی', icon: <Sliders size={16} /> }
   ] as const;
 
   return (
@@ -833,6 +855,24 @@ export default function App() {
               onAddSerial={handleAddSerial}
               onDeleteSerial={handleDeleteSerial}
               darkMode={darkMode}
+            />
+          )}
+
+          {activeTab === 'settings' && (
+            <SettingsSection 
+              darkMode={darkMode}
+              trades={trades}
+              transactions={transactions}
+              assets={assets}
+              loans={loans}
+              debtClaims={debtClaims}
+              habits={habits}
+              tasks={tasks}
+              reminders={reminders}
+              ideas={ideas}
+              games={games}
+              serials={serials}
+              onImportAllData={handleImportAllData}
             />
           )}
         </main>

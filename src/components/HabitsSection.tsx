@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Habit, DayTask, GeneralReminder } from '../types';
 import { 
   Plus, Check, Trash2, Calendar, Clock, Bell, 
@@ -81,24 +81,168 @@ export default function HabitsSection({
   const [solvedCount, setSolvedCount] = useState(0);
   const [emergencyConfirm, setEmergencyConfirm] = useState(false);
 
-  // Auto-check deadlines based on current date & time
+  const [rungIds, setRungIds] = useState<string[]>([]);
+  const alarmAudioIntervalRef = useRef<any>(null);
+  const alarmAudioCtxRef = useRef<any>(null);
+
+  // pre-init & unlock AudioContext on any screen touch/gesture to bypass browser user gesture blocks
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtxClass) {
+          if (!alarmAudioCtxRef.current) {
+            const ctx = new AudioCtxClass();
+            alarmAudioCtxRef.current = ctx;
+            if (ctx.state === 'suspended') {
+              ctx.resume().catch(() => {});
+            }
+          } else if (alarmAudioCtxRef.current.state === 'suspended') {
+            alarmAudioCtxRef.current.resume().catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Web Audio Context unlock deferred:', e);
+      }
+      
+      // Remove listeners once touch/click triggered
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
+
+  const startLoopingAlarmSound = () => {
+    if (alarmAudioIntervalRef.current) return;
+    try {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return;
+      
+      let ctx = alarmAudioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioCtxClass();
+        alarmAudioCtxRef.current = ctx;
+      }
+      
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const playDoubleBeep = () => {
+        if (!ctx || ctx.state === 'closed') return;
+        
+        // Attempt to resume suspended dynamic contexts
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+
+        // Make sound highly expressive, urgent, and loud (increased volume and frequency pitch contrast)
+        // Beep 1 (Urgent High-Pitch Alert)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.frequency.setValueAtTime(1046.50, ctx.currentTime); // C6 pitch
+        gain1.gain.setValueAtTime(0.5, ctx.currentTime); // Louder volume (0.5 instead of 0.2)
+        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc1.start(ctx.currentTime);
+        osc1.stop(ctx.currentTime + 0.2);
+
+        // Beep 2 (Alternating Alarm Pitch)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.frequency.setValueAtTime(1318.51, ctx.currentTime + 0.25); // E6 pitch
+        gain2.gain.setValueAtTime(0.55, ctx.currentTime + 0.25);
+        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+        osc2.start(ctx.currentTime + 0.25);
+        osc2.stop(ctx.currentTime + 0.45);
+      };
+
+      playDoubleBeep();
+      alarmAudioIntervalRef.current = setInterval(playDoubleBeep, 1000);
+    } catch (err) {
+      console.warn('Failed to start looping alarm audio:', err);
+    }
+  };
+
+  const stopLoopingAlarmSound = () => {
+    if (alarmAudioIntervalRef.current) {
+      clearInterval(alarmAudioIntervalRef.current);
+      alarmAudioIntervalRef.current = null;
+    }
+    // Retain context open, do not .close() it so we don't have to re-unlock user gestures.
+    // Instead, just suspend/pause context audio processing
+    if (alarmAudioCtxRef.current && alarmAudioCtxRef.current.state === 'running') {
+      try {
+        alarmAudioCtxRef.current.suspend().catch(() => {});
+      } catch (e) {}
+    }
+  };
+
+  // Listen to active overlays and start/stop looping alarm sound
+  useEffect(() => {
+    if (mathAlarmTask || normalAlarmTask) {
+      startLoopingAlarmSound();
+    } else {
+      stopLoopingAlarmSound();
+    }
+    return () => {
+      stopLoopingAlarmSound();
+    };
+  }, [mathAlarmTask, normalAlarmTask]);
+
+  // Auto-check deadlines and scheduled alarm triggers based on current date & time
   useEffect(() => {
     const checkOverdueAndAlerts = () => {
       const now = new Date();
       const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      const localTodayISO = now.toISOString().slice(0, 10);
       
+      // Update missed tasks if they passed the deadline time
       tasks.forEach(t => {
-        // Mark failed
         if (!t.completed && !t.missed && t.day === 'today' && t.deadlineTime) {
           if (currentHourMin > t.deadlineTime) {
             t.missed = true;
           }
         }
       });
+
+      // Automatically trigger alarm if current time matches scheduled time
+      tasks.forEach(t => {
+        if (!t.completed && !t.missed && t.day === 'today' && t.time && t.alarmType && t.alarmType !== 'none') {
+          if (currentHourMin === t.time && !rungIds.includes(t.id)) {
+            setRungIds(prev => [...prev, t.id]);
+            handleTriggerAlarm(t);
+          }
+        }
+      });
+
+      // Automatically trigger habits alarm if current time matches scheduled time
+      habits.forEach(h => {
+        const isCompleted = !!h.history[localTodayISO];
+        const isMissed = h.deadlineTime ? (currentHourMin > h.deadlineTime) : false;
+        
+        if (!isCompleted && !isMissed && h.time && h.alarmType && h.alarmType !== 'none') {
+          const habitKey = `${h.id}_${localTodayISO}`;
+          if (currentHourMin === h.time && !rungIds.includes(habitKey)) {
+            setRungIds(prev => [...prev, habitKey]);
+            handleTriggerHabitAlarm(h);
+          }
+        }
+      });
     };
-    const interval = setInterval(checkOverdueAndAlerts, 15000);
+
+    const interval = setInterval(checkOverdueAndAlerts, 10000); // Check every 10 seconds
     return () => clearInterval(interval);
-  }, [tasks]);
+  }, [tasks, habits, rungIds]);
 
   // Generate a math question
   const generateMathQuestion = () => {
@@ -140,6 +284,23 @@ export default function HabitsSection({
       osc.start();
       osc.stop(audioCtx.currentTime + 0.6);
     } catch (e) {}
+  };
+
+  // Helper to trigger alarm for habits in the daily list
+  const handleTriggerHabitAlarm = (h: Habit) => {
+    const tempTask: DayTask = {
+      id: h.id,
+      title: `عادت: ${h.title}`,
+      day: 'today',
+      time: h.time,
+      alarmType: h.alarmType || 'none',
+      deadlineTime: h.deadlineTime,
+      completed: !!h.history[todayISO],
+      missed: false,
+      hasAlarm: !!(h.alarmType && h.alarmType !== 'none'),
+      createdAt: h.createdAt
+    };
+    handleTriggerAlarm(tempTask);
   };
 
   // Submit Answer to puzzle
@@ -797,7 +958,7 @@ export default function HabitsSection({
       {/* Grid structure */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Module 1: Daily Habits List & Completion stats */}
+        {/* Module 1: Daily Habits Completion stats & calendar performance */}
         <div className={`p-5 border rounded-2xl shadow-sm space-y-4 flex flex-col justify-between transition-colors ${
           darkMode ? 'bg-slate-905 border-slate-800' : 'bg-white border-zinc-150'
         }`}>
@@ -805,7 +966,7 @@ export default function HabitsSection({
             <div className={`border-b pb-2 flex justify-between items-center ${
               darkMode ? 'border-slate-800' : 'border-slate-100'
             }`}>
-              <h3 className="text-sm font-bold font-display">تسک و عادات همیشگی روزانه</h3>
+              <h3 className="text-sm font-bold font-display">کارنامه تعهد و تقویم انضباط</h3>
               <span className="text-[10px] text-slate-400 font-mono">امروز: {todayISO}</span>
             </div>
 
@@ -820,35 +981,6 @@ export default function HabitsSection({
               <div className="text-right">
                 <span className="text-lg font-bold text-indigo-500 font-mono">{habitCompletionRate}%</span>
               </div>
-            </div>
-
-            {/* Compact Habits management list */}
-            <div className="space-y-1.5 pt-1">
-              <span className="text-[10px] text-slate-405 block font-bold">عادت‌های فعال روزانه و مدیریت آن‌ها:</span>
-              {habits.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic">عادت فعالی تعریف نشده است.</p>
-              ) : (
-                <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5 font-sans">
-                  {habits.map(h => (
-                    <div key={h.id} className={`flex items-center justify-between p-1.5 rounded-lg border text-[10px] font-sans ${
-                      darkMode ? 'bg-slate-950/20 border-slate-850 text-slate-350' : 'bg-slate-50/50 border-slate-100 text-slate-705'
-                    }`}>
-                      <span className="truncate font-semibold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" /> {h.title}
-                      </span>
-                      <button 
-                        onClick={() => onDeleteHabit(h.id)}
-                        className={`p-1 hover:text-rose-500 transition-colors cursor-pointer ${
-                          darkMode ? 'text-slate-550' : 'text-slate-400'
-                        }`}
-                        title="حذف کلی عادت"
-                      >
-                        <Trash2 size={10} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
 
@@ -896,98 +1028,219 @@ export default function HabitsSection({
                 )}
               </div>
 
-              <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
-                {tasks.filter(t => t.day === 'today' && !t.archived).length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای امروز در لیست فعال وجود ندارد.</div>
-                ) : (
-                  tasks.filter(t => t.day === 'today' && !t.archived).map(task => (
-                    <div 
-                      key={task.id} 
-                      className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
-                        task.completed 
-                          ? (darkMode ? 'bg-slate-900/60 border-slate-850 opacity-50' : 'bg-slate-50 border-slate-100 opacity-60')
-                          : task.missed 
-                            ? 'bg-red-500/10 border-red-550/20 text-rose-500' 
-                            : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200')
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onToggleTask(task.id)}
-                          className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+              <div className="space-y-4 max-h-[380px] overflow-y-auto">
+                {/* Subsection A: Once-off Tasks */}
+                <div>
+                  <div className="text-[10px] text-slate-450 font-bold mb-1.5 flex items-center gap-1">
+                    <CheckSquare size={10} className="text-indigo-400" />
+                    <span>کارهای روزانه موقت:</span>
+                  </div>
+                  
+                  {tasks.filter(t => t.day === 'today' && !t.archived).length === 0 ? (
+                    <div className="p-3 text-center text-slate-500 text-[10px] bg-slate-500/5 rounded-lg border border-dashed border-slate-500/10">امروز کار موقتی ثبت نشده است.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {tasks.filter(t => t.day === 'today' && !t.archived).map(task => (
+                        <div 
+                          key={task.id} 
+                          className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
                             task.completed 
-                              ? 'bg-indigo-650 border-indigo-600 text-white' 
-                              : task.missed
-                                ? 'border-rose-450 bg-rose-500/10 text-rose-500 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
-                                : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-350 bg-white hover:border-zinc-850')
+                              ? (darkMode ? 'bg-slate-900/60 border-slate-850 opacity-50' : 'bg-slate-50 border-slate-100 opacity-60')
+                              : task.missed 
+                                ? 'bg-red-500/10 border-red-550/20 text-rose-500' 
+                                : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200')
                           }`}
-                          title={task.missed ? 'ثبت و تکمیل تسک منقضی شده' : 'تغییر وضعیت انجام تسک'}
                         >
-                          {task.completed ? <Check size={10} /> : task.missed ? <span className="font-extrabold text-[7px]">✖</span> : null}
-                        </button>
-                        
-                        <div>
-                          <div className={`font-semibold ${task.completed ? 'line-through text-slate-500' : (darkMode ? 'text-slate-200' : 'text-slate-800')}`}>
-                            {task.title}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => onToggleTask(task.id)}
+                              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+                                task.completed 
+                                  ? 'bg-indigo-650 border-indigo-600 text-white' 
+                                  : task.missed
+                                    ? 'border-rose-450 bg-rose-500/10 text-rose-500 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
+                                    : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-350 bg-white hover:border-zinc-850')
+                              }`}
+                              title={task.missed ? 'ثبت و تکمیل تسک منقضی شده' : 'تغییر وضعیت انجام تسک'}
+                            >
+                              {task.completed ? <Check size={10} /> : task.missed ? <span className="font-extrabold text-[7px]">✖</span> : null}
+                            </button>
+                            
+                            <div>
+                              <div className={`font-semibold ${task.completed ? 'line-through text-slate-500' : (darkMode ? 'text-slate-200' : 'text-slate-800')}`}>
+                                {task.title}
+                              </div>
+                              
+                              <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
+                                {task.time && <span className="font-mono">ساعت {task.time}</span>}
+                                {task.deadlineTime && <span className="font-mono text-zinc-500 font-bold">مهلت: {task.deadlineTime}</span>}
+                                {task.completed && task.completedAt && (
+                                  <span className="text-emerald-500 bg-emerald-500/10 px-1 rounded-md font-bold font-mono">
+                                    ✓ تایید: {task.completedAt}
+                                  </span>
+                                )}
+                                {task.alarmType && task.alarmType !== 'none' && (
+                                  <span className="text-indigo-400 font-bold">
+                                    • زنگ {task.alarmType === 'math' ? 'محاسباتی' : task.alarmType === 'normal' ? 'معمولی' : 'اعلان'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          
-                          <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-450 mt-0.5">
-                            {task.time && <span className="font-mono">ساعت {task.time}</span>}
-                            {task.deadlineTime && <span className="font-mono text-zinc-500 font-bold">مهلت: {task.deadlineTime}</span>}
-                            {task.completed && task.completedAt && (
-                              <span className="text-emerald-500 bg-emerald-500/10 px-1 rounded-md font-bold font-mono">
-                                ✓ تایید: {task.completedAt}
+
+                          <div className="flex items-center gap-1.5">
+                            {task.missed && (
+                              <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[9px] font-bold">
+                                ✖ منقضی
                               </span>
                             )}
-                            {task.alarmType && task.alarmType !== 'none' && (
-                              <span className="text-indigo-400 font-bold">
-                                • زنگ {task.alarmType === 'math' ? 'محاسباتی' : task.alarmType === 'normal' ? 'معمولی' : 'اعلان'}
-                              </span>
+                            
+                            {!task.completed && !task.missed && task.alarmType && task.alarmType !== 'none' && (
+                              <button
+                                onClick={() => handleTriggerAlarm(task)}
+                                className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
+                                  darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-705'
+                                }`}
+                                title="شبیه‌سازی نواختن زنگ هشدار تنظیم گوشی"
+                              >
+                                <BellRing size={10} /> زنگ
+                              </button>
                             )}
+
+                            <button 
+                              onClick={() => {
+                                if (!task.completed) {
+                                  alert('امکان حذف تسک‌های غیرآماده (منقضی شده یا فعال) قبل از ثبت نهایی وجود ندارد! برای انضباط شخصی، شما موظف هستید ابتدا تسک را با زدن تیک، وضعیت آن را به ثبت/تکمیل نهایی تغییر دهید تا منوی حذف برای آن فعال گردد.');
+                                  return;
+                                }
+                                onDeleteTask(task.id);
+                              }}
+                              className={`p-1 rounded transition-colors cursor-pointer ${
+                                !task.completed
+                                  ? 'text-slate-350/30 dark:text-slate-700/30 cursor-not-allowed opacity-40'
+                                  : (darkMode ? 'text-slate-500 hover:text-rose-500' : 'text-slate-400 hover:text-rose-500')
+                              }`}
+                              title={!task.completed ? 'تنها تسک‌های ثبت و تکمیل شده قابل حذف هستند' : 'حذف این تسک'}
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </div>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {task.missed && (
-                          <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[9px] font-bold">
-                            ✖ منقضی
-                          </span>
-                        )}
-                        
-                        {!task.completed && !task.missed && task.alarmType && task.alarmType !== 'none' && (
-                          <button
-                            onClick={() => handleTriggerAlarm(task)}
-                            className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
-                              darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-705'
-                            }`}
-                            title="شبیه‌سازی نواختن زنگ هشدار تنظیم گوشی"
-                          >
-                            <BellRing size={10} /> زنگ
-                          </button>
-                        )}
-
-                        <button 
-                          onClick={() => {
-                            if (!task.completed) {
-                              alert('امکان حذف تسک‌های غیرآماده (منقضی شده یا فعال) قبل از ثبت نهایی وجود ندارد! برای انضباط شخصی، شما موظف هستید ابتدا تسک را با زدن تیک، وضعیت آن را به ثبت/تکمیل نهایی تغییر دهید تا منوی حذف برای آن فعال گردد.');
-                              return;
-                            }
-                            onDeleteTask(task.id);
-                          }}
-                          className={`p-1 rounded transition-colors cursor-pointer ${
-                            !task.completed
-                              ? 'text-slate-350/30 dark:text-slate-700/30 cursor-not-allowed opacity-40'
-                              : (darkMode ? 'text-slate-500 hover:text-rose-500' : 'text-slate-400 hover:text-rose-500')
-                          }`}
-                          title={!task.completed ? 'تنها تسک‌های ثبت و تکمیل شده قابل حذف هستند' : 'حذف این تسک'}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))
-                )}
+                  )}
+                </div>
+
+                {/* Subsection B: Everyday Recurring Habits */}
+                <div className="border-t pt-2.5 border-slate-200/10 dark:border-slate-800/60 text-right">
+                  <div className="text-[10px] text-slate-450 font-bold mb-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <Zap size={10} className="text-amber-500" />
+                      <span>عادت‌های روزانه همیشگی (ثابت امروز):</span>
+                    </div>
+                    {habits.length > 0 && (
+                      <span className="text-[9px] text-indigo-400 font-mono">
+                        {completedHabitsToday} از {totalHabits} کامل
+                      </span>
+                    )}
+                  </div>
+
+                  {habits.length === 0 ? (
+                    <div className="p-3 text-center text-slate-500 text-[10px] bg-slate-500/5 rounded-lg border border-dashed border-slate-500/10">هیچ عادت همیشگی ثبت نشده است.</div>
+                  ) : (
+                    <div className="space-y-1.5 font-sans">
+                      {habits.map(h => {
+                        const isCompleted = !!h.history[todayISO];
+                        const now = new Date();
+                        const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                        const isMissed = !isCompleted && h.deadlineTime && (currentHourMin > h.deadlineTime);
+
+                        return (
+                          <div 
+                            key={h.id} 
+                            className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                              isCompleted 
+                                ? (darkMode ? 'bg-slate-900/40 border-slate-900 text-slate-500 opacity-60' : 'bg-slate-50/50 border-slate-100 text-slate-500 opacity-65')
+                                : isMissed 
+                                  ? 'bg-rose-500/10 border-rose-550/20 text-rose-500' 
+                                  : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200 text-slate-850')
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => onToggleHabit(h.id, todayISO)}
+                                className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+                                  isCompleted 
+                                    ? 'bg-indigo-650 border-indigo-600 text-white' 
+                                    : isMissed
+                                      ? 'border-rose-450 bg-rose-500/10 text-rose-500 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
+                                      : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-350 bg-white hover:border-zinc-850')
+                                }`}
+                                title={isMissed ? 'ثبت و تکمیل عادت منقضی شده امروز' : 'تغییر وضعیت انجام عادت امروز'}
+                              >
+                                {isCompleted ? <Check size={10} /> : isMissed ? <span className="font-extrabold text-[7px]">✖</span> : null}
+                              </button>
+                              
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`font-semibold ${isCompleted ? 'line-through text-slate-500' : ''}`}>
+                                    {h.title}
+                                  </span>
+                                  {h.streak > 0 && (
+                                    <span className="text-[9px] bg-amber-500/15 text-amber-500 px-1 rounded font-bold font-mono" title={`توالی تکرار موفق: ${h.streak} روز`}>
+                                      🔥 {h.streak}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-455 mt-0.5 font-mono">
+                                  {h.time && <span>ساعت {h.time}</span>}
+                                  {h.deadlineTime && <span className="text-zinc-500 font-bold">مهلت مهار: {h.deadlineTime}</span>}
+                                  {h.alarmType && h.alarmType !== 'none' && (
+                                    <span className="text-indigo-400 font-bold font-sans">
+                                      • زنگ ({h.alarmType === 'math' ? 'ریاضی' : h.alarmType === 'normal' ? 'معمولی' : 'اعلان'})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              {isMissed && (
+                                <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[9px] font-bold">
+                                  ✖ ناقص
+                                </span>
+                              )}
+
+                              {!isCompleted && !isMissed && h.alarmType && h.alarmType !== 'none' && (
+                                <button
+                                  onClick={() => handleTriggerHabitAlarm(h)}
+                                  className={`p-1 px-1.5 rounded text-[9px] flex items-center gap-0.5 transition-colors cursor-pointer ${
+                                    darkMode ? 'bg-slate-850 hover:bg-slate-800 text-indigo-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-705'
+                                  }`}
+                                  title="نواختن زنگ هشدار برای این عادت"
+                                >
+                                  <BellRing size={10} /> زنگ
+                                </button>
+                              )}
+
+                              <button 
+                                onClick={() => {
+                                  if (confirm(`آیا مطمئن هستید که می‌خواهید عادت همیشگی «${h.title}» را به طور کلی حذف کنید؟`)) {
+                                    onDeleteHabit(h.id);
+                                  }
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                                title="حذف کلی این عادت"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1001,67 +1254,130 @@ export default function HabitsSection({
                 </h4>
               </div>
 
-              <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
-                {tasks.filter(t => t.day === 'tomorrow' && !t.archived).length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-[10px]">کاری برای فردا ثبت نشده است.</div>
-                ) : (
-                  tasks.filter(t => t.day === 'tomorrow' && !t.archived).map(task => (
-                    <div 
-                      key={task.id} 
-                      className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
-                        task.completed 
-                          ? (darkMode ? 'bg-slate-900 border-slate-850 opacity-55' : 'bg-slate-50 border-slate-100 opacity-60')
-                          : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200')
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onToggleTask(task.id)}
-                          className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+              <div className="space-y-4 max-h-[380px] overflow-y-auto">
+                {/* Subsection A: Once-off Tasks */}
+                <div>
+                  <div className="text-[10px] text-slate-455 font-bold mb-1.5 flex items-center gap-1">
+                    <CheckSquare size={10} className="text-indigo-400" />
+                    <span>کارهای روزانه موقت:</span>
+                  </div>
+
+                  {tasks.filter(t => t.day === 'tomorrow' && !t.archived).length === 0 ? (
+                    <div className="p-3 text-center text-slate-555 text-[10px] bg-slate-500/5 rounded-lg border border-dashed border-slate-500/10">فردا کار موقتی ثبت نشده است.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {tasks.filter(t => t.day === 'tomorrow' && !t.archived).map(task => (
+                        <div 
+                          key={task.id} 
+                          className={`p-2.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
                             task.completed 
-                              ? 'bg-indigo-650 border-indigo-600 text-white' 
-                              : task.missed
-                                ? 'border-rose-450 bg-rose-500/10 text-rose-500 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
-                                : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-300 bg-white hover:border-zinc-800')
+                              ? (darkMode ? 'bg-slate-900 border-slate-855 opacity-55' : 'bg-slate-50 border-slate-100 opacity-60')
+                              : (darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-zinc-200')
                           }`}
-                          title={task.missed ? 'ثبت و تکمیل تسک منقضی شده' : 'تغییر وضعیت انجام تسک'}
                         >
-                          {task.completed ? <Check size={10} /> : task.missed ? <span className="font-extrabold text-[7px]">✖</span> : null}
-                        </button>
-                        
-                        <div>
-                          <div className={`font-semibold ${task.completed ? 'line-through text-slate-505' : (darkMode ? 'text-slate-205' : 'text-slate-800')}`}>
-                            {task.title}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => onToggleTask(task.id)}
+                              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+                                task.completed 
+                                  ? 'bg-indigo-650 border-indigo-600 text-white' 
+                                  : task.missed
+                                    ? 'border-rose-450 bg-rose-500/10 text-rose-505 hover:bg-emerald-500/10 hover:border-emerald-450 hover:text-emerald-500'
+                                    : (darkMode ? 'border-slate-700 bg-slate-950 hover:border-slate-500' : 'border-zinc-300 bg-white hover:border-zinc-800')
+                              }`}
+                              title={task.missed ? 'ثبت و تکمیل تسک منقضی شده' : 'تغییر وضعیت انجام تسک'}
+                            >
+                              {task.completed ? <Check size={10} /> : task.missed ? <span className="font-extrabold text-[7px]">✖</span> : null}
+                            </button>
+                            
+                            <div>
+                              <div className={`font-semibold ${task.completed ? 'line-through text-slate-505' : (darkMode ? 'text-slate-205' : 'text-slate-800')}`}>
+                                {task.title}
+                              </div>
+                              <div className="flex items-center gap-1 text-[9px] text-slate-450 mt-0.5 font-mono">
+                                {task.time && <span>ساعت {task.time}</span>}
+                                {task.alarmType && task.alarmType !== 'none' && <span className="font-semibold text-indigo-400">• زنگ‌دار ({task.alarmType})</span>}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 text-[9px] text-slate-450 mt-0.5 font-mono">
-                            {task.time && <span>ساعت {task.time}</span>}
-                            {task.alarmType && task.alarmType !== 'none' && <span className="font-semibold text-indigo-400">• زنگ‌دار ({task.alarmType})</span>}
+
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => {
+                                if (!task.completed) {
+                                  alert('امکان حذف تسک‌های غیرآماده (منقضی شده یا فعال) قبل از ثبت نهایی وجود ندارد! برای انضباط شخصی، شما موظف هستید ابتدا تسک را با زدن تیک، وضعیت آن را به ثبت/تکمیل نهایی تغییر دهید تا منوی حذف برای آن فعال گردد.');
+                                  return;
+                                }
+                                onDeleteTask(task.id);
+                              }}
+                              className={`p-1 rounded transition-colors cursor-pointer ${
+                                !task.completed
+                                  ? 'text-slate-350/30 dark:text-slate-700/30 cursor-not-allowed opacity-40'
+                                  : (darkMode ? 'text-slate-505 hover:text-rose-550' : 'text-slate-400 hover:text-rose-500')
+                              }`}
+                              title={!task.completed ? 'تنها تسک‌های ثبت و تکمیل شده قابل حذف هستند' : 'حذف این تسک'}
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </div>
                         </div>
-                      </div>
-
-                      <div className="flex gap-1">
-                        <button 
-                          onClick={() => {
-                            if (!task.completed) {
-                              alert('امکان حذف تسک‌های غیرآماده (منقضی شده یا فعال) قبل از ثبت نهایی وجود ندارد! برای انضباط شخصی، شما موظف هستید ابتدا تسک را با زدن تیک، وضعیت آن را به ثبت/تکمیل نهایی تغییر دهید تا منوی حذف برای آن فعال گردد.');
-                              return;
-                            }
-                            onDeleteTask(task.id);
-                          }}
-                          className={`p-1 rounded transition-colors cursor-pointer ${
-                            !task.completed
-                              ? 'text-slate-350/30 dark:text-slate-700/30 cursor-not-allowed opacity-40'
-                              : (darkMode ? 'text-slate-500 hover:text-rose-500' : 'text-slate-400 hover:text-rose-500')
-                          }`}
-                          title={!task.completed ? 'تنها تسک‌های ثبت و تکمیل شده قابل حذف هستند' : 'حذف این تسک'}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))
-                )}
+                  )}
+                </div>
+
+                {/* Subsection B: Everyday Recurring Habits (Tomorrow) */}
+                <div className="border-t pt-2.5 border-slate-200/10 dark:border-slate-800/60 text-right">
+                  <div className="text-[10px] text-slate-455 font-bold mb-1.5 flex items-center gap-1">
+                    <Zap size={10} className="text-amber-500" />
+                    <span>عادت‌های روتین برنامه‌ریزی شده فردا:</span>
+                  </div>
+
+                  {habits.length === 0 ? (
+                    <div className="p-3 text-center text-slate-500 text-[10px] bg-slate-500/5 rounded-lg border border-dashed border-slate-500/10">عادت روتینی ثبت نشده است.</div>
+                  ) : (
+                    <div className="space-y-1.5 font-sans">
+                      {habits.map(h => (
+                        <div 
+                          key={h.id} 
+                          className={`p-2.5 rounded-lg border text-xs flex justify-between items-center opacity-75 ${
+                            darkMode ? 'bg-slate-900/30 border-slate-855/65 text-slate-405' : 'bg-slate-50/30 border-slate-100 text-slate-600'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded border border-dashed border-slate-400/40 flex items-center justify-center text-[8px] text-slate-400/40 select-none cursor-not-allowed" title="پس از آغاز فردا فعال می‌شود">
+                              ⏱️
+                            </div>
+                            
+                            <div>
+                              <div className="font-semibold text-slate-700 dark:text-slate-305">
+                                {h.title}
+                              </div>
+                              <div className="flex items-center gap-1 text-[9px] text-slate-450 mt-0.5 font-mono">
+                                {h.time && <span>طرح اولیه: {h.time}</span>}
+                                {h.deadlineTime && <span className="opacity-80">مهلت مهار: {h.deadlineTime}</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => {
+                                if (confirm(`آیا مطمئن هستید که می‌خواهید عادت همیشگی «${h.title}» را به طور کلی حذف کنید؟`)) {
+                                  onDeleteHabit(h.id);
+                                }
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                              title="حذف کلی این عادت"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
