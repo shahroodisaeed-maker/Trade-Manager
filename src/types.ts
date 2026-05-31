@@ -16,6 +16,7 @@ export interface TradeLog {
   result: 'profit' | 'loss' | 'breakeven';
   gainLossAmount: number; // profit/loss in dollars or units
   notes: string;
+  category?: 'forex' | 'crypto';
 }
 
 export interface PositionCalculator {

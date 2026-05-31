@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TradeLog } from '../types';
 import { 
   Plus, Calendar, Clock, TrendingUp, Layers, HelpCircle, 
   Upload, CheckCircle, XCircle, MinusCircle, Trash2, Edit3, 
-  Download, ChevronRight, Calculator, RefreshCw, BarChart2, BookOpen
+  Download, ChevronRight, Calculator, RefreshCw, BarChart2, BookOpen, PlusCircle
 } from 'lucide-react';
 
 interface JournalSectionProps {
@@ -27,6 +27,9 @@ export default function JournalSection({
   const [activeLightboxImage, setActiveLightboxImage] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // New Sub-view selection: 'statement' showing history & stats, 'tools' showing calculator & form
+  const [journalSubView, setJournalSubView] = useState<'statement' | 'tools'>('statement');
+
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [pair, setPair] = useState('EURUSD');
@@ -39,6 +42,42 @@ export default function JournalSection({
   const [gainLossAmount, setGainLossAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [image, setImage] = useState<string | undefined>(undefined);
+  const [tradeCategory, setTradeCategory] = useState<'forex' | 'crypto'>('forex');
+
+  // Live custom trading pairs state
+  const [newPairInput, setNewPairInput] = useState('');
+  const [tradingPairs, setTradingPairs] = useState<string[]>(() => {
+    const saved = localStorage.getItem('customTradingPairs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // ignore
+      }
+    }
+    return [
+      'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 
+      'NZDUSD', 'EURJPY', 'GBPJPY', 'XAUUSD', 'BTCUSD', 'ETHUSD',
+      'GBPCHF', 'EURGBP', 'EURAUD', 'EURNZD', 'AUDJPY', 'CADJPY', 'CHFJPY', 
+      'XAGUSD', 'US30', 'NDAQ', 'SOLUSD', 'USOIL'
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('customTradingPairs', JSON.stringify(tradingPairs));
+  }, [tradingPairs]);
+
+  const handleAddCustomPair = () => {
+    const cleaned = newPairInput.trim().toUpperCase();
+    if (!cleaned) return;
+    if (tradingPairs.includes(cleaned)) {
+      alert('این جفت ارز/کالا از قبل در لیست وجود دارد.');
+      return;
+    }
+    setTradingPairs(prev => [...prev, cleaned]);
+    setPair(cleaned);
+    setNewPairInput('');
+  };
 
   // Position Calculator state
   const [calcBalance, setCalcBalance] = useState('10000');
@@ -52,6 +91,7 @@ export default function JournalSection({
   const [resultFilter, setResultFilter] = useState<'all' | 'profit' | 'loss' | 'breakeven'>('all'); // Filter by trade results
   const [pairFilter, setPairFilter] = useState<string>('all');
   const [weekdayFilter, setWeekdayFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'forex' | 'crypto'>('all');
 
   // Handle image upload
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,7 +124,8 @@ export default function JournalSection({
       result,
       gainLossAmount: Number(gainLossAmount) * (result === 'loss' ? -1 : 1),
       notes,
-      image
+      image,
+      category: tradeCategory
     };
 
     if (editingTradeId) {
@@ -111,6 +152,7 @@ export default function JournalSection({
     setGainLossAmount('');
     setNotes('');
     setImage(undefined);
+    setTradeCategory('forex');
     setShowAddForm(false);
     setEditingTradeId(null);
   };
@@ -129,17 +171,11 @@ export default function JournalSection({
     setGainLossAmount(Math.abs(trade.gainLossAmount).toString());
     setNotes(trade.notes);
     setImage(trade.image);
+    setTradeCategory(trade.category || 'forex');
     setEditingTradeId(trade.id);
     setShowAddForm(true);
+    setJournalSubView('tools');
   };
-
-  // Expanded trading pairs list
-  const tradingPairs = [
-    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 
-    'NZDUSD', 'EURJPY', 'GBPJPY', 'XAUUSD', 'BTCUSD', 'ETHUSD',
-    'GBPCHF', 'EURGBP', 'EURAUD', 'EURNZD', 'AUDJPY', 'CADJPY', 'CHFJPY', 
-    'XAGUSD', 'US30', 'NDAQ', 'SOLUSD', 'USOIL'
-  ];
 
   // Calculate position size for Forex
   const handleCalculatePosition = () => {
@@ -174,13 +210,25 @@ export default function JournalSection({
     return Array.from(months).sort((a, b) => b.localeCompare(a));
   };
 
-  // Filtered trades list (incorporating time filter + result filter + pair filter + weekday filter)
+  // Helper to safely get the category of a trade (handling older records)
+  const getTradeCategory = (t: TradeLog): 'forex' | 'crypto' => {
+    if (t.category) return t.category;
+    // Auto-detect based on pair
+    const cryptoAssets = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'BTC', 'ETH', 'SOL'];
+    const p = t.pair.toUpperCase();
+    if (cryptoAssets.some(c => p.includes(c))) return 'crypto';
+    return 'forex';
+  };
+
+  // Filtered trades list (incorporating time filter + result filter + pair filter + weekday filter + category filter)
   const daysOfWeekPersian = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
 
   const filteredTrades = trades.filter(t => {
     const archiveMatch = selectedArchive === 'all' || t.dateTime.startsWith(selectedArchive);
     const resultMatch = resultFilter === 'all' || t.result === resultFilter;
     const pairMatch = pairFilter === 'all' || t.pair === pairFilter;
+    const tCat = getTradeCategory(t);
+    const categoryMatch = categoryFilter === 'all' || tCat === categoryFilter;
 
     let weekdayMatch = true;
     if (weekdayFilter !== 'all') {
@@ -191,7 +239,7 @@ export default function JournalSection({
       weekdayMatch = (dayName === weekdayFilter);
     }
 
-    return archiveMatch && resultMatch && pairMatch && weekdayMatch;
+    return archiveMatch && resultMatch && pairMatch && weekdayMatch && categoryMatch;
   });
 
   // Calculate stats for CURRENTLY active filter
@@ -201,12 +249,25 @@ export default function JournalSection({
   const winRate = totalTradesCount > 0 ? Math.round((profitableTrades / totalTradesCount) * 100) : 0;
   const totalGainLoss = filteredTrades.reduce((sum, curr) => sum + curr.gainLossAmount, 0);
 
+  // Profit and loss for Crypto trades only
+  const cryptoGainLoss = trades.filter(t => getTradeCategory(t) === 'crypto').reduce((sum, curr) => sum + curr.gainLossAmount, 0);
+
+  // Overall database win rates per category (Forex vs Crypto separately)
+  const forexTrades = trades.filter(t => getTradeCategory(t) === 'forex');
+  const profitableForexCount = forexTrades.filter(t => t.result === 'profit').length;
+  const forexWinRate = forexTrades.length > 0 ? Math.round((profitableForexCount / forexTrades.length) * 100) : 0;
+
+  const cryptoTrades = trades.filter(t => getTradeCategory(t) === 'crypto');
+  const profitableCryptoCount = cryptoTrades.filter(t => t.result === 'profit').length;
+  const cryptoWinRate = cryptoTrades.length > 0 ? Math.round((profitableCryptoCount / cryptoTrades.length) * 100) : 0;
+
   // Export to CSV Function
   const exportToCSV = () => {
-    const headers = ['id', 'تاریخ و ساعت', 'جفت ارز', 'تایم فریم', 'استراتژی', 'قیمت ورود', 'حد ضرر', 'حد سود', 'نتیجه معامله', 'سود/زیان مادی ($)', 'یادداشت‌ ها'];
+    const headers = ['id', 'تاریخ و ساعت', 'دسته‌بندی', 'جفت ارز', 'تایم فریم', 'استراتژی', 'قیمت ورود', 'حد ضرر', 'حد سود', 'نتیجه معامله', 'سود/زیان مادی ($)', 'یادداشت‌ ها'];
     const rows = filteredTrades.map(t => [
       t.id,
       t.dateTime,
+      getTradeCategory(t) === 'crypto' ? 'کریپتو' : 'فارکس',
       t.pair,
       t.timeframe,
       t.strategy,
@@ -319,123 +380,205 @@ export default function JournalSection({
 
   return (
     <div className="space-y-6" dir="rtl">
-      {/* Overview stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-1">
-        <div className={`p-4 border rounded-2xl flex items-center justify-between shadow-sm transition-colors ${
-          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
-        }`}>
-          <div>
-            <span className="text-xs text-slate-505 font-medium">کل معاملات فیلترشده</span>
-            <h3 className="text-2xl font-bold mt-1 font-mono tracking-tight">{totalTradesCount}</h3>
-          </div>
-          <BookOpen className="text-slate-400" size={22} />
+      {/* Sub-Navigation Buttons for Tab Partitioning */}
+      <div className="flex border-b pb-1 justify-between items-center flex-wrap gap-2 border-slate-150/40 dark:border-slate-800">
+        <div className="flex gap-1 p-1 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200/40 dark:border-slate-850">
+          <button
+            onClick={() => setJournalSubView('statement')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              journalSubView === 'statement'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : `text-slate-500 hover:text-slate-705 dark:text-slate-400 dark:hover:text-slate-100`
+            }`}
+          >
+            <BarChart2 size={13} />
+            کارنامه معاملاتی و تاریخچه
+          </button>
+          <button
+            onClick={() => {
+              setJournalSubView('tools');
+              setShowAddForm(true);
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              journalSubView === 'tools'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : `text-slate-500 hover:text-slate-705 dark:text-slate-400 dark:hover:text-slate-100`
+            }`}
+          >
+            <Calculator size={13} />
+            ثبت ترید و ابزار محاسباتی
+          </button>
         </div>
 
-        <div className={`p-4 border rounded-2xl flex items-center justify-between shadow-sm transition-colors ${
-          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
-        }`}>
-          <div>
-            <span className="text-xs text-slate-505 font-medium">نسبت پیروزی (Win Rate)</span>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <h3 className="text-2xl font-bold text-emerald-500 font-mono tracking-tight">{winRate}%</h3>
-              <span className="text-[10px] text-slate-400 font-medium">({profitableTrades} از {totalTradesCount})</span>
+        {journalSubView === 'statement' && (
+          <button
+            onClick={() => {
+              setJournalSubView('tools');
+              setShowAddForm(true);
+            }}
+            className="px-3.5 py-1.5 bg-indigo-600/10 hover:bg-indigo-600/25 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <Plus size={14} />
+            ثبت معامله جدید
+          </button>
+        )}
+      </div>
+
+      {journalSubView === 'statement' && (
+        <>
+          {/* Overview stats cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-1 animate-in fade-in duration-200">
+            <div className={`p-4 border rounded-2xl flex items-center justify-between shadow-sm transition-colors ${
+              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
+            }`}>
+              <div>
+                <span className="text-xs text-slate-505 font-medium">کل معاملات فیلترشده</span>
+                <h3 className="text-2xl font-bold mt-1 font-mono tracking-tight">{totalTradesCount}</h3>
+              </div>
+              <BookOpen className="text-slate-400" size={22} />
+            </div>
+
+            <div className={`p-4 border rounded-2xl flex flex-col justify-between shadow-sm transition-colors ${
+              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
+            }`}>
+              <div className="flex items-center justify-between w-full">
+                <div>
+                  <span className="text-xs text-slate-505 font-medium">نسبت پیروزی (Win Rate)</span>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    <h3 className="text-2xl font-bold text-emerald-500 font-mono tracking-tight">{winRate}%</h3>
+                    <span className="text-[10px] text-slate-400 font-medium">({profitableTrades} از {totalTradesCount})</span>
+                  </div>
+                </div>
+                <TrendingUp className="text-emerald-500" size={22} />
+              </div>
+              {/* Separate win rates for Crypto vs Forex */}
+              <div className="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-slate-100/10 text-[10px]">
+                <div className="flex flex-col border-r border-slate-100/10 pr-1">
+                  <span className="text-slate-450 leading-tight">📈 وین‌ریت فارکس</span>
+                  <span className="font-extrabold font-mono text-xs text-indigo-650 dark:text-indigo-400 mt-0.5">
+                    {forexWinRate}% <span className="text-[9px] font-normal text-slate-400 font-sans">({profitableForexCount}/{forexTrades.length})</span>
+                  </span>
+                </div>
+                <div className="flex flex-col pl-1">
+                  <span className="text-slate-450 leading-tight">🪙 وین‌ریت کریپتو</span>
+                  <span className="font-extrabold font-mono text-xs text-indigo-650 dark:text-indigo-400 mt-0.5">
+                    {cryptoWinRate}% <span className="text-[9px] font-normal text-slate-400 font-sans">({profitableCryptoCount}/{cryptoTrades.length})</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className={`p-4 border rounded-2xl flex items-center justify-between shadow-sm transition-colors ${
+              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
+            }`}>
+              <div>
+                <span className="text-xs text-slate-505 font-medium">سود/زیان کل کارنامه (فقط کریپتو)</span>
+                <h3 className={`text-2xl font-bold mt-1 font-mono tracking-tight ${cryptoGainLoss >= 0 ? (darkMode ? 'text-emerald-400' : 'text-slate-900') : 'text-rose-600'}`}>
+                  {cryptoGainLoss >= 0 ? '+' : ''}{cryptoGainLoss.toLocaleString()}$
+                </h3>
+              </div>
+              <div className={`p-1.5 rounded-full ${cryptoGainLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
+                <TrendingUp size={16} />
+              </div>
             </div>
           </div>
-          <TrendingUp className="text-emerald-500" size={22} />
-        </div>
+        </>
+      )}
 
-        <div className={`p-4 border rounded-2xl flex items-center justify-between shadow-sm transition-colors ${
+      {/* DETACHED SPARK / HIGH-READABILITY FULL-WIDTH FILTER PANEL - Only visible under statement subview */}
+      {journalSubView === 'statement' && (
+        <div className={`p-4 border rounded-2xl flex flex-col justify-between shadow-sm gap-3 transition-all ${
           darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
         }`}>
-          <div>
-            <span className="text-xs text-slate-505 font-medium">سود/زیان کل کارنامه</span>
-            <h3 className={`text-2xl font-bold mt-1 font-mono tracking-tight ${totalGainLoss >= 0 ? (darkMode ? 'text-emerald-400' : 'text-slate-900') : 'text-rose-600'}`}>
-              {totalGainLoss >= 0 ? '+' : ''}{totalGainLoss.toLocaleString()}$
-            </h3>
+          <div className="flex items-center justify-between border-b pb-1.5 border-slate-100/10">
+            <span className="text-[11px] text-indigo-400 font-black flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse" /> فیلترهای چندبعدی کارنامه معاملاتی
+            </span>
+            <Calendar className="text-slate-450" size={15} />
           </div>
-          <div className={`p-1.5 rounded-full ${totalGainLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
-            <TrendingUp size={16} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-right">
+            <div>
+              <span className="text-[10px] text-slate-405 block font-bold mb-1.5">بایگانی ماه</span>
+              <select 
+                className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+                }`}
+                value={selectedArchive}
+                onChange={(e) => setSelectedArchive(e.target.value)}
+              >
+                <option value="all">همه ماه‌ها</option>
+                {getArchiveGroups().map(group => (
+                  <option key={group} value={group}>{getPersianMonthName(group)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <span className="text-[10px] text-slate-405 block font-bold mb-1.5">دسته‌بندی بازار</span>
+              <select 
+                className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-505 text-xs font-semibold cursor-pointer ${
+                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+                }`}
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value as any)}
+              >
+                <option value="all">همه بازارها</option>
+                <option value="forex">فقط فارکس (Forex)</option>
+                <option value="crypto">فقط کریپتو (Crypto)</option>
+              </select>
+            </div>
+
+            <div>
+              <span className="text-[10px] text-slate-405 block font-bold mb-1.5">جفت ارز مورد معامله</span>
+              <select 
+                className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+                }`}
+                value={pairFilter}
+                onChange={(e) => setPairFilter(e.target.value)}
+              >
+                <option value="all">همه جفت ارزها</option>
+                {Array.from(new Set(['XAUUSD', ...trades.map(t => t.pair)])).sort().map(p => (
+                  <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <span className="text-[10px] text-slate-405 block font-bold mb-1.5">روز هفته معامله</span>
+              <select 
+                className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
+                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-705 border-slate-200 bg-white'
+                }`}
+                value={weekdayFilter}
+                onChange={(e) => setWeekdayFilter(e.target.value)}
+              >
+                <option value="all">تمام روزها</option>
+                {['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'].map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <span className="text-[10px] text-slate-405 block font-bold mb-1.5">برآیند معامله</span>
+              <select 
+                className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-550 text-xs font-semibold cursor-pointer ${
+                  darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
+                }`}
+                value={resultFilter}
+                onChange={(e) => setResultFilter(e.target.value as any)}
+              >
+                <option value="all">همه نتایج</option>
+                <option value="profit">فقط سودها</option>
+                <option value="loss">فقط ضررها</option>
+                <option value="breakeven">فقط سربه‌سر</option>
+              </select>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* DETACHED SPARK / HIGH-READABILITY FULL-WIDTH FILTER PANEL */}
-      <div className={`p-4 border rounded-2xl flex flex-col justify-between shadow-sm gap-3 transition-all ${
-        darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/95'
-      }`}>
-        <div className="flex items-center justify-between border-b pb-1.5 border-slate-100/10">
-          <span className="text-[11px] text-indigo-400 font-black flex items-center gap-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse" /> فیلترهای چندبعدی کارنامه معاملاتی
-          </span>
-          <Calendar className="text-slate-450" size={15} />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-right">
-          <div>
-            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">بایگانی ماه</span>
-            <select 
-              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
-                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
-              }`}
-              value={selectedArchive}
-              onChange={(e) => setSelectedArchive(e.target.value)}
-            >
-              <option value="all">همه ماه‌ها</option>
-              {getArchiveGroups().map(group => (
-                <option key={group} value={group}>{getPersianMonthName(group)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">جفت ارز مورد معامله</span>
-            <select 
-              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
-                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
-              }`}
-              value={pairFilter}
-              onChange={(e) => setPairFilter(e.target.value)}
-            >
-              <option value="all">همه جفت ارزها</option>
-              {Array.from(new Set(['XAUUSD', ...trades.map(t => t.pair)])).sort().map(p => (
-                <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">روز هفته معامله</span>
-            <select 
-              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
-                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
-              }`}
-              value={weekdayFilter}
-              onChange={(e) => setWeekdayFilter(e.target.value)}
-            >
-              <option value="all">تمام روزها</option>
-              {['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'].map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <span className="text-[10px] text-slate-405 block font-bold mb-1.5">برآیند معامله</span>
-            <select 
-              className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer ${
-                darkMode ? 'text-slate-200 border-slate-800 bg-slate-950' : 'text-slate-700 border-slate-200 bg-white'
-              }`}
-              value={resultFilter}
-              onChange={(e) => setResultFilter(e.target.value as any)}
-            >
-              <option value="all">همه نتایج</option>
-              <option value="profit">فقط سودها</option>
-              <option value="loss">فقط ضررها</option>
-              <option value="breakeven">فقط سربه‌سر</option>
-            </select>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Main layout: Table & Sidebar Form/Calc */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -443,136 +586,155 @@ export default function JournalSection({
         {/* Left column: Position Calculator & Performance Chart */}
         <div className="space-y-6 order-2 lg:order-1">
           {/* position calc */}
-          <div className={`p-5 border rounded-2xl shadow-sm space-y-4 ${
-            darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-          }`}>
-            <h3 className={`text-sm font-bold flex items-center gap-1.5 font-display border-b pb-2 ${
-              darkMode ? 'text-slate-100 border-slate-800' : 'text-slate-900 border-slate-100'
+          {journalSubView === 'tools' && (
+            <div className={`p-5 border rounded-2xl shadow-sm space-y-4 ${
+              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
             }`}>
-              <Calculator size={16} className="text-indigo-500" />
-              محاسبه‌گر حجم پوزیشن (فارکس)
-            </h3>
-            
-            <div className="space-y-3 text-xs leading-relaxed">
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">دارایی حساب (USD)</label>
-                <input 
-                  type="number" 
-                  value={calcBalance} 
-                  onChange={(e) => setCalcBalance(e.target.value)}
-                  className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono text-left ${
-                    darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-                  }`} 
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
+              <h3 className={`text-sm font-bold flex items-center gap-1.5 font-display border-b pb-2 ${
+                darkMode ? 'text-slate-100 border-slate-800' : 'text-slate-900 border-slate-100'
+              }`}>
+                <Calculator size={16} className="text-indigo-500" />
+                محاسبه‌گر حجم پوزیشن (فارکس)
+              </h3>
+              
+              <div className="space-y-3 text-xs leading-relaxed">
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">ریسک (٪)</label>
+                  <label className="block text-slate-400 mb-1 font-medium">دارایی حساب (USD)</label>
                   <input 
                     type="number" 
-                    step="0.1" 
-                    value={calcRisk} 
-                    onChange={(e) => setCalcRisk(e.target.value)}
+                    value={calcBalance} 
+                    onChange={(e) => setCalcBalance(e.target.value)}
                     className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono text-left ${
                       darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
                     }`} 
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-400 mb-1 font-medium">حد ضرر (پیپ)</label>
-                  <input 
-                    type="number" 
-                    value={calcSlPips} 
-                    onChange={(e) => setCalcSlPips(e.target.value)}
-                    className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono text-left ${
-                      darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-                    }`} 
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">جفت ارز مورد معامله</label>
-                <select 
-                  value={calcPair} 
-                  onChange={(e) => setCalcPair(e.target.value)}
-                  className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono text-left ${
-                    darkMode ? 'bg-slate-950 border-slate-700 text-slate-150' : 'bg-white border-slate-200 text-slate-800'
-                  }`}
-                >
-                  {tradingPairs.map(p => (
-                    <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button 
-                type="button"
-                onClick={handleCalculatePosition}
-                className="w-full py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-              >
-                محاسبه حجم به لات <RefreshCw size={13} />
-              </button>
-
-              {calcResult !== null && (
-                <div className={`p-3 rounded-xl border text-center space-y-1 mt-2 ${
-                  darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'
-                }`}>
-                  <div className="text-[10px] text-slate-400 font-medium">اندازه پیشنهادی پوزیشن</div>
-                  <div className="text-xl font-bold font-mono text-indigo-500">{calcResult} Lot</div>
-                  <div className="text-[9px] text-slate-400 leading-tight">
-                    ریسک مالی: {((Number(calcBalance) * Number(calcRisk)) / 100).toFixed(1)}$ | هر یک پیپ حرکت روی این حجم تقریباً {(calcResult * (calcPair.endsWith('JPY') ? 9.1 : 10)).toFixed(1)}$ تغییر خواهد داد.
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">ریسک (٪)</label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      value={calcRisk} 
+                      onChange={(e) => setCalcRisk(e.target.value)}
+                      className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono text-left ${
+                        darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
+                      }`} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">حد ضرر (پیپ)</label>
+                    <input 
+                      type="number" 
+                      value={calcSlPips} 
+                      onChange={(e) => setCalcSlPips(e.target.value)}
+                      className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-505 font-mono text-left ${
+                        darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
+                      }`} 
+                    />
                   </div>
                 </div>
-              )}
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">جفت ارز مورد معامله</label>
+                  <select 
+                    value={calcPair} 
+                    onChange={(e) => setCalcPair(e.target.value)}
+                    className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-505 font-mono text-left ${
+                      darkMode ? 'bg-slate-950 border-slate-700 text-slate-150' : 'bg-white border-slate-200 text-slate-850'
+                    }`}
+                  >
+                    {tradingPairs.map(p => (
+                      <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={handleCalculatePosition}
+                  className="w-full py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  محاسبه حجم به لات <RefreshCw size={13} />
+                </button>
+
+                {calcResult !== null && (
+                  <div className={`p-3 rounded-xl border text-center space-y-1 mt-2 ${
+                    darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'
+                  }`}>
+                    <div className="text-[10px] text-slate-400 font-medium">اندازه پیشنهادی پوزیشن</div>
+                    <div className="text-xl font-bold font-mono text-indigo-500">{calcResult} Lot</div>
+                    <div className="text-[9px] text-slate-400 leading-tight">
+                      ریسک مالی: {((Number(calcBalance) * Number(calcRisk)) / 100).toFixed(1)}$ | هر یک پیپ حرکت روی این حجم تقریباً {(calcResult * (calcPair.endsWith('JPY') ? 9.1 : 10)).toFixed(1)}$ تغییر خواهد داد.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* charts rendered here */}
-          <div className={`p-5 border rounded-2xl shadow-sm ${
-            darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-          }`}>
-            {renderPerformanceChart()}
-          </div>
+          {journalSubView === 'statement' && (
+            <div className={`p-5 border rounded-2xl shadow-sm animate-in fade-in duration-200 ${
+              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              {renderPerformanceChart()}
+            </div>
+          )}
         </div>
 
         {/* Right column: Trade table & Register forms */}
         <div className="lg:col-span-2 space-y-4 order-1 lg:order-2">
           
-          <div className="flex items-center justify-between">
-            <h3 className={`text-base font-bold font-display ${
-              darkMode ? 'text-slate-100' : 'text-slate-900'
-            }`}>تاریخچه و کارنامه معاملاتی</h3>
-            <div className="flex gap-2">
+          {/* If statement subview is active */}
+          {journalSubView === 'statement' && (
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-100/10 mb-4 animate-in fade-in duration-200">
+              <h3 className={`text-sm font-black font-display flex items-center gap-2 ${
+                darkMode ? 'text-slate-150' : 'text-slate-900'
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                آرشیو و برگه‌های معاملات ثبت‌شده
+              </h3>
               <button
                 onClick={exportToCSV}
-                className={`px-3 py-1.5 border rounded-lg transition-colors text-xs flex items-center gap-1 cursor-pointer ${
+                className={`px-3.5 py-1.5 border rounded-xl transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer ${
                   darkMode ? 'border-slate-800 bg-slate-900 text-slate-350 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <Download size={13} /> خروجی اکسل (CSV)
               </button>
-              
-              <button
-                onClick={() => {
-                  if (showAddForm) resetForm();
-                  else setShowAddForm(true);
-                }}
-                className="px-3 py-1.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all text-xs flex items-center gap-1 cursor-pointer shadow-sm"
-              >
-                <Plus size={14} /> معامله جدید
-              </button>
             </div>
-          </div>
+          )}
 
-          {/* New/Edit Trade form view if active */}
-          {showAddForm && (
-            <form onSubmit={handleSubmit} className={`p-5 border rounded-2xl shadow-inner space-y-4 transition-colors ${
+          {/* If tools subview is active */}
+          {journalSubView === 'tools' && (
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-100/10 mb-4 animate-in fade-in duration-200">
+              <h3 className={`text-sm font-black font-display flex items-center gap-2 ${
+                darkMode ? 'text-slate-150' : 'text-slate-900'
+              }`}>
+                <PlusCircle size={15} className="text-indigo-500" />
+                {editingTradeId ? 'پنل ویرایش اطلاعات ترید انتخابی' : 'صندوق ثبت معامله جدید در کارنامه'}
+              </h3>
+              {editingTradeId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  انصراف از ویرایش
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* New/Edit Trade form view if active - Only show inside tools view! */}
+          {journalSubView === 'tools' && showAddForm && (
+            <form onSubmit={handleSubmit} className={`p-5 border rounded-2xl shadow-inner space-y-4 transition-colors animate-in slide-in-from-top-4 duration-305 ${
               darkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}>
               <h4 className="text-xs font-bold">
-                {editingTradeId ? 'ویرایش اطلاعات معامله انتخابی' : 'ثبت معامله جدید'}
+                {editingTradeId ? 'ویرایش اطلاعات معامله انتخابی' : 'مشخصات فنی ترید جدید'}
               </h4>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
@@ -583,8 +745,8 @@ export default function JournalSection({
                     required
                     value={date} 
                     onChange={(e) => setDate(e.target.value)} 
-                    className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 ${
-                      darkMode ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200'
+                    className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-505 ${
+                      darkMode ? 'bg-slate-955 border-slate-700 text-slate-100' : 'bg-white border-slate-200'
                     }`} 
                   />
                 </div>
@@ -600,20 +762,6 @@ export default function JournalSection({
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">جفت ارز / کالا *</label>
-                  <select 
-                    value={pair} 
-                    onChange={(e) => setPair(e.target.value)} 
-                    className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono ${
-                      darkMode ? 'bg-slate-950 border-slate-700 text-white' : 'bg-white border-slate-200'
-                    }`}
-                  >
-                    {tradingPairs.map(p => (
-                      <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label className="block text-slate-400 mb-1 font-medium">تایم فریم *</label>
                   <select 
                     value={timeframe} 
@@ -624,6 +772,61 @@ export default function JournalSection({
                   >
                     {['M1', 'M3', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1'].map(f => (
                       <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">دسته‌بندی بازار *</label>
+                  <select 
+                    value={tradeCategory} 
+                    onChange={(e) => setTradeCategory(e.target.value as 'forex' | 'crypto')} 
+                    className={`w-full p-2 border rounded-lg focus:outline-none focus:border-indigo-505 font-sans ${
+                      darkMode ? 'bg-slate-950 border-slate-700 text-white' : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <option value="forex">فارکس (Forex)</option>
+                    <option value="crypto">کریپتو (Crypto)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Dynamic Pair Manager Block */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs bg-indigo-500/5 p-4 rounded-xl border border-indigo-500/10 mb-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-slate-400 font-bold">➕ افزودن جفت ارز / کالا جدید به سیستم</label>
+                  </div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      placeholder="مثال: DOGEUSD یا ADAUSD"
+                      value={newPairInput}
+                      onChange={(e) => setNewPairInput(e.target.value.toUpperCase())}
+                      className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 font-mono text-xs ${
+                        darkMode ? 'bg-slate-950 border-slate-700 text-white' : 'bg-white border-slate-200'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomPair}
+                      className="px-4 py-2 bg-indigo-650 hover:bg-indigo-750 text-white font-semibold rounded-xl transition-all cursor-pointer text-xs shrink-0 shadow-sm"
+                    >
+                      ثبت نماد
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-bold">🎯 انتخاب جفت ارز / کالا برای این معامله *</label>
+                  <select 
+                    value={pair} 
+                    onChange={(e) => setPair(e.target.value)} 
+                    className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-indigo-500 font-mono text-xs cursor-pointer ${
+                      darkMode ? 'bg-slate-950 border-slate-700 text-white' : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    {tradingPairs.map(p => (
+                      <option key={p} value={p}>{p === 'XAUUSD' ? 'GOLD / طلا (XAUUSD)' : p}</option>
                     ))}
                   </select>
                 </div>
@@ -782,8 +985,9 @@ export default function JournalSection({
           )}
 
           {/* Trade Grid Gallery list */}
-          <div>
-            {filteredTrades.length === 0 ? (
+          {journalSubView === 'statement' && (
+            <div className="animate-in fade-in duration-300">
+              {filteredTrades.length === 0 ? (
               <div className={`p-10 border rounded-2xl text-center text-slate-500 text-xs leading-relaxed ${
                 darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
               }`}>
@@ -956,7 +1160,8 @@ export default function JournalSection({
                 })}
               </div>
             )}
-          </div>
+            </div>
+          )}
         </div>
 
       </div>
