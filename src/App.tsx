@@ -142,6 +142,7 @@ export default function App() {
   });
 
   // --- Global Alarm States ---
+  const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
   const [mathAlarmTask, setMathAlarmTask] = useState<DayTask | null>(null);
   const [normalAlarmTask, setNormalAlarmTask] = useState<DayTask | null>(null);
   const [activeNotification, setActiveNotification] = useState<{ id: string; title: string; desc: string } | null>(null);
@@ -1076,6 +1077,10 @@ export default function App() {
     { key: 'settings', label: 'تنظیمات و پشتیبان‌گیری', description: 'دانلود فایل پشتیبان دیتابیس گوشی', icon: <Sliders size={16} /> }
   ] as const;
 
+  const currentTabIndex = tabsConfig.findIndex((t: any) => t.key === activeTab);
+  const prevTab = currentTabIndex > 0 ? tabsConfig[currentTabIndex - 1] : null;
+  const nextTab = currentTabIndex < tabsConfig.length - 1 ? tabsConfig[currentTabIndex + 1] : null;
+
   return (
     <div className={`min-h-screen flex flex-col font-sans selection:bg-indigo-600/30 selection:text-indigo-400 antialiased transition-colors duration-300 ${
       darkMode ? 'dark bg-[#070913] text-[#f1f3f9]' : 'bg-[#fafbfe] text-slate-900'
@@ -1086,26 +1091,16 @@ export default function App() {
       <div className="fixed bottom-[-200px] right-[-150px] w-[500px] h-[500px] rounded-full bg-amber-500/3 dark:bg-amber-505/3 blur-[120px] pointer-events-none z-0" />
 
       {/* Dynamic minimalist system status top flag bar */}
-      <header className={`border-b px-6 py-4 flex items-center justify-between transition-all duration-300 relative z-10 ${
+      <header className={`border-b px-6 py-3 flex items-center justify-between transition-all duration-300 relative z-10 ${
         darkMode ? 'bg-slate-900/60 border-slate-800/80 backdrop-blur-md' : 'bg-white/90 border-slate-150 backdrop-blur-md shadow-sm'
       }`} dir="rtl">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-display font-black text-xl shadow-lg shadow-indigo-500/10 select-none animate-pulse">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-display font-black text-lg shadow-lg shadow-indigo-500/10 select-none">
             Z
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-black tracking-tight font-display bg-clip-text text-transparent bg-gradient-to-l from-indigo-500 via-indigo-600 to-violet-750 dark:from-slate-100 dark:to-indigo-300">
-                اتاق کار هوشمند زیست جامع زنیت
-              </h1>
-              <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
-                Zenith v2.5
-              </span>
-            </div>
-            <p className={`text-[10px] mt-0.5 font-medium ${darkMode ? 'text-slate-400' : 'text-slate-450'}`}>
-              پلتفرم فوق‌پیشرفته و منسجم آفلاین مدیریت معامله‌گری، بهینه‌سازی ثروت، انضباط بیدارباش و توسعه فردی
-            </p>
-          </div>
+          <span className="text-sm font-black font-display tracking-tight text-slate-850 dark:text-slate-100">
+            اتاق کار زنیت
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -1121,23 +1116,45 @@ export default function App() {
           >
             {darkMode ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-
-          {/* Status Label */}
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold ${
-            darkMode ? 'bg-slate-900/90 border border-slate-800/80 text-indigo-400' : 'bg-slate-100 border border-slate-200/50 text-slate-705'
-          }`}>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-            سیستم امن و آفلاین
-          </span>
-          <span className="text-[10px] text-slate-400 font-mono hidden lg:inline bg-slate-500/5 border border-slate-500/10 px-2 py-1 rounded-lg">2026-05-30 UTC</span>
         </div>
       </header>
 
       {/* Main body split layouts */}
       <div className="flex-1 flex flex-col md:flex-row relative z-10">
         
-        {/* Right sidebars - tab selectors and system controls */}
-        <nav className={`w-full md:w-[270px] border-b md:border-b-0 md:border-l p-5 shrink-0 flex flex-col justify-between text-right transition-all duration-300 ${
+        {/* Mobile current active tab header banner (Elegant first-class UX) */}
+        <div className={`md:hidden sticky top-0 z-30 flex items-center justify-between p-3.5 border-b shadow-sm backdrop-blur-md transition-all duration-300 ${
+          darkMode ? 'bg-slate-950/95 border-slate-850/80 text-white' : 'bg-white/95 border-slate-150 text-slate-905'
+        }`} dir="rtl">
+          <div className="flex items-center gap-3">
+            <span className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+              darkMode ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+            }`}>
+              {tabsConfig.find(tab => tab.key === activeTab)?.icon}
+            </span>
+            <div className="text-right">
+              <h2 className="text-xs font-black font-display leading-tight">
+                {tabsConfig.find(tab => tab.key === activeTab)?.label}
+              </h2>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5 max-w-[190px] truncate">
+                {tabsConfig.find(tab => tab.key === activeTab)?.description}
+              </span>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => setShowMobileMoreMenu(true)}
+            className={`px-3 py-1.5 h-8 rounded-full text-[10px] font-black border transition-all flex items-center gap-1 active:scale-95 cursor-pointer shrink-0 ${
+              darkMode ? 'bg-slate-900 border-slate-800 text-slate-350 hover:text-white' : 'bg-zinc-100 border-zinc-200 text-slate-750 hover:bg-zinc-200'
+            }`}
+          >
+            <span>بخش‌ها</span>
+            <span className="text-xs">▾</span>
+          </button>
+        </div>
+
+        {/* Right sidebars - tab selectors and system controls (Hidden on mobile, beautiful layout for desktop) */}
+        <nav className={`hidden md:flex w-full md:w-[270px] border-b md:border-b-0 md:border-l p-5 shrink-0 flex-col justify-between text-right transition-all duration-300 ${
           darkMode ? 'bg-[#0b0e1e]/80 border-slate-800/80' : 'bg-[#f7f9fd] border-slate-200/90'
         }`} dir="rtl">
           <div className="space-y-4">
@@ -1194,7 +1211,7 @@ export default function App() {
         </nav>
 
         {/* Central main workspace sections rendering view container */}
-        <main className="flex-1 p-5 overflow-y-auto max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-5 pb-28 md:pb-5 overflow-y-auto max-w-7xl mx-auto w-full">
           {activeTab === 'dashboard' && (
             <DashboardSection 
               trades={trades}
@@ -1212,6 +1229,8 @@ export default function App() {
               onNavigate={(tab) => setActiveTab(tab)}
               onAddTask={(title, day, time, deadlineTime, alarmType) => handleAddTask({ title, day, time, deadlineTime, alarmType, hasAlarm: alarmType !== 'none' })}
               onAddIdea={(title, description, estimatedHours) => handleAddIdea(title, estimatedHours, description)}
+              onToggleHabit={handleToggleHabit}
+              onToggleTask={handleToggleTask}
             />
           )}
 
@@ -1312,9 +1331,218 @@ export default function App() {
               onImportAllData={handleImportAllData}
             />
           )}
+
+          {/* Quick Mobile Swipe-like Navigation Banners */}
+          <div className="md:hidden flex items-center justify-between gap-3 mt-10 pb-12" dir="rtl">
+            {prevTab ? (
+              <button
+                onClick={() => {
+                  setActiveTab(prevTab.key);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`flex-1 p-3.5 rounded-2xl border text-right flex items-center gap-2.5 transition-all text-xs font-bold justify-start cursor-pointer active:scale-95 ${
+                  darkMode ? 'bg-slate-900/80 border-slate-800 text-slate-350 hover:text-white' : 'bg-white border-zinc-200 text-slate-650 hover:bg-zinc-50 shadow-sm'
+                }`}
+              >
+                <span className="text-sm font-black text-indigo-500">→</span>
+                <div className="text-right">
+                  <span className="text-[9px] text-slate-400 block font-normal leading-tight">بخش قبلی</span>
+                  <span className="font-extrabold text-[11px] leading-tight">
+                    {prevTab.key === 'dashboard' ? 'داشبورد' :
+                     prevTab.key === 'journal' ? 'ژورنال ترید' :
+                     prevTab.key === 'focus' ? 'اتاق تمرکز' :
+                     prevTab.key === 'financial' ? 'برنامه مالی' :
+                     prevTab.key === 'habits' ? 'عادات و تسک' :
+                     prevTab.key === 'ideas' ? 'صندوقچه ایده‌ها' :
+                     prevTab.key === 'games' ? 'فیلم و بازی' : 'تنظیمات'}
+                  </span>
+                </div>
+              </button>
+            ) : <div className="flex-1" />}
+
+            {nextTab ? (
+              <button
+                onClick={() => {
+                  setActiveTab(nextTab.key);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`flex-1 p-3.5 rounded-2xl border text-left flex items-center gap-2.5 transition-all text-xs font-bold justify-end cursor-pointer active:scale-95 ${
+                  darkMode ? 'bg-slate-900/80 border-slate-800 text-slate-350 hover:text-white' : 'bg-white border-zinc-200 text-slate-650 hover:bg-zinc-50 shadow-sm'
+                }`}
+              >
+                <div className="text-left">
+                  <span className="text-[9px] text-slate-400 block font-normal leading-tight">بخش بعدی</span>
+                  <span className="font-extrabold text-[11px] leading-tight">
+                    {nextTab.key === 'dashboard' ? 'داشبورد' :
+                     nextTab.key === 'journal' ? 'ژورنال ترید' :
+                     nextTab.key === 'focus' ? 'اتاق تمرکز' :
+                     nextTab.key === 'financial' ? 'برنامه مالی' :
+                     nextTab.key === 'habits' ? 'عادات و تسک' :
+                     nextTab.key === 'ideas' ? 'صندوقچه ایده‌ها' :
+                     nextTab.key === 'games' ? 'فیلم و بازی' : 'تنظیمات'}
+                  </span>
+                </div>
+                <span className="text-sm font-black text-indigo-500">←</span>
+              </button>
+            ) : <div className="flex-1" />}
+          </div>
         </main>
 
       </div>
+
+      {/* Premium Floating Mobile Bottom Navigation Bar / Deck */}
+      <div className={`md:hidden fixed bottom-4 left-4 right-4 z-[990] h-16 rounded-3xl border backdrop-blur-lg flex items-center justify-around px-2 shadow-2xl transition-all duration-300 ${
+        darkMode ? 'bg-slate-950/90 border-slate-805 text-slate-101 shadow-indigo-950/40' : 'bg-white/95 border-zinc-200/90 text-slate-900 shadow-xl shadow-slate-200/55'
+      }`} dir="rtl">
+        {/* Dashboard Tab */}
+        <button 
+          onClick={() => { setActiveTab('dashboard'); setShowMobileMoreMenu(false); }}
+          className={`flex flex-col items-center justify-center flex-1 h-full rounded-2xl transition-all active:scale-95 cursor-pointer ${
+            activeTab === 'dashboard' && !showMobileMoreMenu
+              ? 'text-indigo-600 dark:text-indigo-400 font-extrabold'
+              : 'text-slate-450 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className={`p-1 rounded-lg transition-transform ${activeTab === 'dashboard' && !showMobileMoreMenu ? 'scale-110 animate-pulse' : ''}`}>
+            <LayoutGrid size={18} />
+          </div>
+          <span className="text-[9px] mt-0.5 whitespace-nowrap">داشبورد</span>
+        </button>
+
+        {/* Journal Tab */}
+        <button 
+          onClick={() => { setActiveTab('journal'); setShowMobileMoreMenu(false); }}
+          className={`flex flex-col items-center justify-center flex-1 h-full rounded-2xl transition-all active:scale-95 cursor-pointer ${
+            activeTab === 'journal' && !showMobileMoreMenu
+              ? 'text-indigo-600 dark:text-indigo-400 font-extrabold'
+              : 'text-slate-450 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className={`p-1 rounded-lg transition-transform ${activeTab === 'journal' && !showMobileMoreMenu ? 'scale-110' : ''}`}>
+            <BookOpen size={18} />
+          </div>
+          <span className="text-[9px] mt-0.5 whitespace-nowrap">ژورنال</span>
+        </button>
+
+        {/* Habits Tab */}
+        <button 
+          onClick={() => { setActiveTab('habits'); setShowMobileMoreMenu(false); }}
+          className={`flex flex-col items-center justify-center flex-1 h-full rounded-2xl transition-all active:scale-95 cursor-pointer ${
+            activeTab === 'habits' && !showMobileMoreMenu
+              ? 'text-indigo-600 dark:text-indigo-400 font-extrabold'
+              : 'text-slate-450 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className={`p-1 rounded-lg transition-transform ${activeTab === 'habits' && !showMobileMoreMenu ? 'scale-110' : ''}`}>
+            <Award size={18} />
+          </div>
+          <span className="text-[9px] mt-0.5 whitespace-nowrap">عادات</span>
+        </button>
+
+        {/* Focus Tab */}
+        <button 
+          onClick={() => { setActiveTab('focus'); setShowMobileMoreMenu(false); }}
+          className={`flex flex-col items-center justify-center flex-1 h-full rounded-2xl transition-all active:scale-95 cursor-pointer ${
+            activeTab === 'focus' && !showMobileMoreMenu
+              ? 'text-indigo-600 dark:text-indigo-400 font-extrabold'
+              : 'text-slate-450 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className={`p-1 rounded-lg transition-transform ${activeTab === 'focus' && !showMobileMoreMenu ? 'scale-110 animate-bounce' : ''}`}>
+            <Sparkles size={18} />
+          </div>
+          <span className="text-[9px] mt-0.5 whitespace-nowrap">تمرکز</span>
+        </button>
+
+        {/* More Menu Tab */}
+        <button 
+          onClick={() => setShowMobileMoreMenu(!showMobileMoreMenu)}
+          className={`flex flex-col items-center justify-center flex-1 h-full rounded-2xl transition-all active:scale-95 cursor-pointer ${
+            showMobileMoreMenu
+              ? 'text-indigo-600 dark:text-indigo-405 font-extrabold'
+              : 'text-slate-455 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className={`p-1 rounded-lg transition-all ${showMobileMoreMenu ? 'scale-110 text-rose-500 rotate-180' : ''}`}>
+            <Layers size={18} />
+          </div>
+          <span className="text-[9px] mt-0.5 whitespace-nowrap">بخش‌ها</span>
+        </button>
+      </div>
+
+      {/* Floating Mobile More/Drawer fullscreen-overlay */}
+      {showMobileMoreMenu && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[990] flex items-end justify-center transition-all animate-fade-in" dir="rtl">
+          <div className={`w-full max-h-[85vh] rounded-t-[32px] p-6 shadow-2xl flex flex-col space-y-4 overflow-y-auto mb-0 border-t ${
+            darkMode ? 'bg-[#0a0d1e] border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
+          }`}>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b pb-3 border-slate-500/10">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-indigo-500/10 text-indigo-500 rounded-xl">
+                  <Compass size={20} />
+                </span>
+                <div className="text-right">
+                  <h3 className="text-sm font-black font-display leading-tight">پیمایش کامل بخش‌های زنیت</h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">بخش مد نظر خود را جهت جابجایی تپ کنید:</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowMobileMoreMenu(false)}
+                className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all active:scale-95 cursor-pointer ${
+                  darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' : 'bg-zinc-100 border-zinc-250 text-slate-600'
+                }`}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Grid display of all 8 tabs */}
+            <div className="grid grid-cols-2 gap-3 pb-8">
+              {tabsConfig.map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => {
+                      setActiveTab(tab.key);
+                      setShowMobileMoreMenu(false);
+                      window.scrollTo({ top: 0, behavior: 'auto' });
+                    }}
+                    className={`p-4 rounded-2xl border text-right transition-all flex flex-col gap-2 cursor-pointer active:scale-95 ${
+                      isActive 
+                        ? (darkMode ? 'bg-indigo-650/20 border-indigo-500 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-700 font-extrabold') 
+                        : (darkMode ? 'bg-slate-900/60 border-slate-850 text-slate-350 hover:bg-slate-900' : 'bg-zinc-50 border-zinc-150 text-slate-650 hover:bg-zinc-100')
+                    }`}
+                  >
+                    <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                      isActive 
+                        ? (darkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-700') 
+                        : (darkMode ? 'bg-slate-850 text-slate-400' : 'bg-white text-slate-500 shadow-sm border border-zinc-200/50')
+                    }`}>
+                      {tab.icon}
+                    </span>
+                    <div className="text-right">
+                      <div className="text-xs font-black leading-tight">
+                        {tab.key === 'dashboard' ? 'داشبورد' :
+                         tab.key === 'journal' ? 'ژورنال ترید' :
+                         tab.key === 'focus' ? 'اتاق تمرکز' :
+                         tab.key === 'financial' ? 'برنامه مالی' :
+                         tab.key === 'habits' ? 'عادت و تسک' :
+                         tab.key === 'ideas' ? 'ایده‌ها' :
+                         tab.key === 'games' ? 'فیلم و بازی' : 'تنظیمات'}
+                      </div>
+                      <div className="text-[9px] text-slate-400 leading-normal mt-1 block max-h-[2.4em] overflow-hidden">
+                        {tab.description}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeNotification && (
         <div className="fixed top-4 right-4 bg-indigo-650 border border-indigo-500 text-white z-[9999] p-4 rounded-2xl shadow-xl flex items-start gap-3 max-w-sm animate-bounce" dir="rtl">

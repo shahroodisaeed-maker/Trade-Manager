@@ -73,6 +73,21 @@ export default function HabitsSection({
   // Performance Month Selection state (defaults to May 2026)
   const [selectedMonth, setSelectedMonth] = useState('2026-05');
 
+  // Custom confirmation modal state (bypasses browser iframe restrictions)
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
 
 
   const handleAddHabitSubmit = (e: React.FormEvent) => {
@@ -180,17 +195,19 @@ export default function HabitsSection({
     const areaPoints = `0,${graphHeight} ${polylinePoints} ${graphWidth},${graphHeight}`;
 
     return (
-      <div className="space-y-4 text-right">
+      <div className="space-y-5 text-right font-sans">
         {/* Month Selector Dropdown */}
-        <div className="flex items-center justify-between gap-1 border-b border-indigo-150/10 pb-2">
-          <span className="text-[10px] text-slate-450 font-extrabold flex items-center gap-1">
-            <Activity size={12} className="text-indigo-400" /> بایگانی و تقویم فرآیند عادات
+        <div className="flex items-center justify-between gap-1 border-b border-indigo-150/10 pb-2.5">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-extrabold flex items-center gap-1.5">
+            <Activity size={14} className="text-indigo-500 animate-pulse" /> بایگانی و تقویم فرآیند عادات
           </span>
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className={`text-[10px] font-bold p-1 bg-transparent border-b focus:outline-none ${
-              darkMode ? 'text-indigo-300 border-slate-700 bg-slate-900' : 'text-slate-800 border-zinc-200 bg-white'
+            className={`text-[11px] font-black p-1.5 px-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${
+              darkMode 
+                ? 'text-indigo-300 border-slate-800 bg-slate-900/95 hover:border-slate-700' 
+                : 'text-slate-850 border-zinc-200 bg-white hover:bg-zinc-55'
             }`}
           >
             <option value="2026-12">آذر ۱۴۰۵ (December 2026)</option>
@@ -212,28 +229,34 @@ export default function HabitsSection({
         </div>
 
         {/* Dynamic Weekly Performance Trend - BOXES layout requested by user */}
-        <div className="grid grid-cols-5 gap-1 pt-1">
+        <div className="grid grid-cols-5 gap-2 pt-1">
           {weeklyAverages.map((wk, idx) => {
             const isHigh = wk.percentage >= 70;
             const isLow = wk.percentage < 40;
             return (
               <div 
                 key={idx} 
-                className={`p-1.5 border rounded-lg text-center transition-all ${
+                className={`p-2 border rounded-xl text-center transition-all duration-300 transform hover:-translate-y-0.5 hover:shadow-md ${
                   darkMode 
-                    ? 'bg-slate-950/40 border-slate-850' 
-                    : 'bg-slate-50 border-zinc-150'
+                    ? 'bg-gradient-to-b from-slate-900/90 to-slate-950/80 border-slate-800/80 hover:border-slate-700' 
+                    : 'bg-gradient-to-b from-white to-zinc-50 border-zinc-200/80 hover:border-zinc-300 shadow-sm'
                 }`}
               >
-                <div className="text-[8px] text-slate-450 font-bold truncate">{wk.name}</div>
-                <div className={`text-xs font-bold font-mono tracking-tight mt-0.5 ${
-                  isHigh ? 'text-indigo-500' : isLow ? 'text-rose-500' : 'text-amber-500'
+                <div className="text-[9px] text-slate-400 dark:text-slate-500 font-extrabold truncate">{wk.name}</div>
+                <div className={`text-xs font-black font-mono tracking-tight mt-1 ${
+                  isHigh 
+                    ? 'text-emerald-500 dark:text-emerald-400' 
+                    : isLow 
+                      ? 'text-rose-500 dark:text-rose-400' 
+                      : 'text-amber-500 dark:text-amber-400'
                 }`}>
                   {wk.percentage}%
                 </div>
-                <div className="w-full bg-slate-200/40 h-0.5 rounded-full mt-1 overflow-hidden">
+                <div className="w-full bg-slate-200/40 dark:bg-slate-800/80 h-1 rounded-full mt-2 overflow-hidden">
                   <div 
-                    className={`h-full ${isHigh ? 'bg-indigo-500' : isLow ? 'bg-rose-500' : 'bg-amber-500'}`} 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      isHigh ? 'bg-emerald-500' : isLow ? 'bg-rose-500' : 'bg-amber-500'
+                    }`} 
                     style={{ width: `${wk.percentage}%` }}
                   />
                 </div>
@@ -243,29 +266,45 @@ export default function HabitsSection({
         </div>
 
         {/* Dynamic SVG Sparkline Line Chart of Daily Progress rates - requested by user */}
-        <div className={`p-2.5 border rounded-xl flex flex-col justify-between ${
-          darkMode ? 'bg-slate-950/20 border-slate-850' : 'bg-zinc-50/50 border-zinc-100'
+        <div className={`p-3.5 border rounded-2xl flex flex-col justify-between transition-all relative overflow-hidden ${
+          darkMode ? 'bg-slate-950/40 border-slate-850/80' : 'bg-zinc-50/45 border-zinc-150/80'
         }`}>
-          <div className="flex justify-between items-center text-[8px] text-slate-400 font-bold pb-1">
-            <span>روند خطی پیشرفت روز‌های ماه</span>
-            <span className="font-mono text-indigo-455">نوسان عملکرد</span>
+          <div className="flex justify-between items-center text-[10px] pb-1.5">
+            <span className="font-extrabold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+              روند نوسان پیشرفت روزهای ماه
+            </span>
+            <span className="font-mono text-indigo-500 font-black text-[9px] px-2 py-0.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg">نمودار خطی</span>
           </div>
           
-          <div className="relative w-full h-11" dir="ltr">
-            <svg className="w-full h-full" viewBox={`0 0 ${graphWidth} ${graphHeight}`}>
+          <div className="relative w-full h-14 mt-1" dir="ltr">
+            <svg 
+              className="w-full h-full" 
+              viewBox={`0 0 ${graphWidth} ${graphHeight}`}
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0.01" />
+                </linearGradient>
+              </defs>
+
               {/* Grid Lines */}
+              <line x1="0" y1={graphHeight/4} x2={graphWidth} y2={graphHeight/4} stroke={darkMode ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)"} strokeDasharray="2 2" />
               <line x1="0" y1={graphHeight/2} x2={graphWidth} y2={graphHeight/2} stroke={darkMode ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)"} />
+              <line x1="0" y1={(graphHeight*3)/4} x2={graphWidth} y2={(graphHeight*3)/4} stroke={darkMode ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)"} strokeDasharray="2 2" />
               
-              {/* Shaded Area */}
+              {/* Shaded Area with Linear Gradient */}
               <polygon
                 points={areaPoints}
-                className={darkMode ? "fill-indigo-500/10" : "fill-indigo-100/45"}
+                fill="url(#chartGradient)"
               />
               {/* Continuous Trend Line */}
               <polyline
                 fill="none"
                 stroke="#6366f1"
-                strokeWidth="1.5"
+                strokeWidth="2"
                 points={polylinePoints}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -279,9 +318,8 @@ export default function HabitsSection({
                     key={i}
                     cx={x}
                     cy={y}
-                    r="1.5"
-                    className="fill-indigo-600 hover:r-3.5 transition-all text-white"
-                    style={{ cursor: 'pointer' }}
+                    r="2"
+                    className="fill-indigo-500 stroke-white dark:stroke-slate-950 stroke-1 hover:r-3 transition-all cursor-pointer"
                   />
                 );
               })}
@@ -290,9 +328,23 @@ export default function HabitsSection({
         </div>
 
         {/* Traditional Heat-map visual grid for chosen month */}
-        <div className="space-y-1.5">
-          <div className="text-[8px] text-slate-500 font-bold">نقشه حرارتی فعالیت کل ماه:</div>
-          <div className="grid grid-cols-7 gap-1" dir="ltr">
+        <div className="space-y-2 pt-1">
+          <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+            <span>نقشه روزشمار عملکرد ماهانه:</span>
+            <span className="text-[9px] text-slate-400 font-normal">تقویم عادات ({todayISO})</span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1.5" dir="rtl">
+            {/* Weekday Labels in Persian RTL */}
+            {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((dayChar, i) => (
+              <div 
+                key={i} 
+                className="text-center text-[10px] font-black text-slate-400 dark:text-slate-500 pb-1"
+              >
+                {dayChar}
+              </div>
+            ))}
+
             {list.map(dayNum => {
               const dayStr = dayNum.toString().padStart(2, '0');
               const targetDateStr = `${selectedMonth}-${dayStr}`;
@@ -300,36 +352,49 @@ export default function HabitsSection({
               const completedOnThisDay = habits.filter(h => h.history[targetDateStr]).length;
               const rate = totalOnEachDay > 0 ? (completedOnThisDay / totalOnEachDay) : 0;
 
-              let bgColor = 'bg-slate-100'; 
+              let bgColor = '';
               let tooltip = `روز ${dayNum}ام: بدون فعالیت`;
 
-              if (darkMode) {
-                bgColor = 'bg-slate-950 border border-slate-900';
-              }
-
-              if (totalOnEachDay > 0) {
+              if (totalOnEachDay === 0) {
+                bgColor = darkMode 
+                  ? 'bg-slate-900 border border-slate-800/80 text-slate-600' 
+                  : 'bg-zinc-100 border border-zinc-200 text-slate-300';
+                tooltip = `روز ${dayNum}ام: هیچ عادتی تعریف نشده است`;
+              } else {
                 if (rate === 0) {
-                  bgColor = darkMode ? 'bg-rose-950/20 border border-rose-900/30 text-rose-500' : 'bg-rose-50 border border-rose-100/40 text-rose-600';
-                  tooltip = `روز ${dayNum}ام: درصد موفقیت ۰٪`;
+                  bgColor = darkMode 
+                    ? 'bg-slate-900/60 border border-slate-850/40 text-slate-500' 
+                    : 'bg-zinc-50 border border-zinc-200/50 text-zinc-400';
+                  tooltip = `روز ${dayNum}ام: انجام صفر درصد ۰٪`;
                 } else if (rate <= 0.4) {
-                  bgColor = 'bg-indigo-100 text-indigo-700';
-                  tooltip = `روز ${dayNum}ام: درصد موفقیت ${Math.round(rate * 100)}٪`;
+                  bgColor = 'bg-indigo-500/15 border border-indigo-500/20 text-indigo-400 dark:text-indigo-300';
+                  tooltip = `روز ${dayNum}ام: انجام ${Math.round(rate * 100)}٪ عادات`;
                 } else if (rate <= 0.7) {
-                  bgColor = 'bg-indigo-300 text-indigo-950';
-                  tooltip = `روز ${dayNum}ام: درصد موفقیت ${Math.round(rate * 100)}٪`;
+                  bgColor = 'bg-indigo-500/35 border border-indigo-500/25 text-indigo-900 dark:text-indigo-200';
+                  tooltip = `روز ${dayNum}ام: انجام ${Math.round(rate * 100)}٪ عادات`;
                 } else {
-                  bgColor = 'bg-indigo-600 text-white';
-                  tooltip = `روز ${dayNum}ام: درصد موفقیت ۱۰۰٪ کامل`;
+                  bgColor = 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/35';
+                  tooltip = `روز ${dayNum}ام: تکمیل ۱۰۰٪ عادات`;
                 }
               }
+
+              const isCurrentDay = targetDateStr === todayISO;
 
               return (
                 <div 
                   key={dayNum} 
-                  className={`h-5 rounded flex items-center justify-center text-[7px] font-mono font-bold transition-all cursor-pointer select-none ${bgColor}`}
+                  className={`aspect-square min-h-[30px] rounded-xl flex flex-col items-center justify-center text-xs font-mono font-bold transition-all cursor-pointer relative ${bgColor} hover:scale-105 active:scale-95 ${
+                    isCurrentDay ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-950 font-black scale-105' : ''
+                  }`}
                   title={tooltip}
                 >
-                  {dayNum}
+                  <span>{dayNum}</span>
+                  {rate > 0 && rate < 1 && (
+                    <span className="absolute bottom-1 w-1 h-1 rounded-full bg-indigo-400/80" />
+                  )}
+                  {rate === 1 && (
+                    <span className="absolute bottom-1 w-1 h-1 rounded-full bg-emerald-400" />
+                  )}
                 </div>
               );
             })}
@@ -337,16 +402,19 @@ export default function HabitsSection({
         </div>
 
         {/* Legend */}
-        <div className="flex items-center justify-between text-[8px] text-slate-400 mt-2 font-display">
-          <div className="flex gap-2">
-            <span className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-sm inline-block ${darkMode ? 'bg-slate-950 border border-slate-900' : 'bg-slate-100'}`} /> صفر درصد
+        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-3 font-display">
+          <div className="flex flex-wrap gap-2.5">
+            <span className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-md inline-block ${darkMode ? 'bg-slate-900 border border-slate-800' : 'bg-zinc-100 border border-zinc-200'}`} /> صفر درصد / بدون عادات
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm bg-indigo-300 inline-block" /> ۴۰ تا ۷۰ درصد
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-md bg-indigo-500/15 border border-indigo-500/20 inline-block" /> تا ۴۰ درصد
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm bg-indigo-600 inline-block" /> ۱۰۰ درصد کامل
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-md bg-indigo-500/35 border border-indigo-500/25 inline-block" /> تا ۷۰ درصد
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-md bg-indigo-600 inline-block shadow-sm shadow-indigo-601/30" /> ۱۰۰ درصد کامل
             </span>
           </div>
         </div>
@@ -631,9 +699,16 @@ export default function HabitsSection({
                 {tasks.filter(t => t.day === 'today' && !t.archived).length > 0 && (
                   <button
                     onClick={() => {
-                      if (confirm('آیا از اتمام روز و انتقال تسک‌های امروز به بایگانی نهایی مطمئن هستید؟')) {
-                        onArchiveTodayTasks();
-                      }
+                      setConfirmModal({
+                        isOpen: true,
+                        title: 'پایان روز و انتقال به بایگانی',
+                        message: 'آیا از اتمام روز و انتقال تسک‌های امروز به بایگانی نهایی مطمئن هستید؟ کارهای بایگانی‌شده از این بخش مخفی و در آمار ذخیره خواهند شد.',
+                        confirmText: 'بله، انتقال به بایگانی',
+                        cancelText: 'انصراف',
+                        onConfirm: () => {
+                          onArchiveTodayTasks();
+                        }
+                      });
                     }}
                     className="flex items-center gap-1 text-[9px] px-2 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-500 border border-emerald-500/20 rounded-lg transition-all font-bold cursor-pointer"
                     title="بایگانی تاریخی تسک‌های امروز با ساعات انجام"
@@ -840,9 +915,16 @@ export default function HabitsSection({
 
                               <button 
                                 onClick={() => {
-                                  if (confirm(`آیا مطمئن هستید که می‌خواهید عادت همیشگی «${h.title}» را به طور کلی حذف کنید؟`)) {
-                                    onDeleteHabit(h.id);
-                                  }
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    title: 'حذف کلی عادت',
+                                    message: `آیا مطمئن هستید که می‌خواهید عادت همیشگی «${h.title}» را به طور کلی حذف کنید؟ این عمل غیرقابل بازگشت است.`,
+                                    confirmText: 'بله، حذف شود',
+                                    cancelText: 'انصراف',
+                                    onConfirm: () => {
+                                      onDeleteHabit(h.id);
+                                    }
+                                  });
                                 }}
                                 className="p-1 rounded text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
                                 title="حذف کلی این عادت"
@@ -978,9 +1060,16 @@ export default function HabitsSection({
                           <div className="flex gap-1">
                             <button 
                               onClick={() => {
-                                if (confirm(`آیا مطمئن هستید که می‌خواهید عادت همیشگی «${h.title}» را به طور کلی حذف کنید؟`)) {
-                                  onDeleteHabit(h.id);
-                                }
+                                setConfirmModal({
+                                  isOpen: true,
+                                  title: 'حذف کلی عادت',
+                                  message: `آیا مطمئن هستید که می‌خواهید عادت همیشگی «${h.title}» را به طور کلی حذف کنید؟ این عمل غیرقابل بازگشت است.`,
+                                  confirmText: 'بله، حذف شود',
+                                  cancelText: 'انصراف',
+                                  onConfirm: () => {
+                                    onDeleteHabit(h.id);
+                                  }
+                                });
                               }}
                               className="p-1 rounded text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
                               title="حذف کلی این عادت"
@@ -1156,6 +1245,45 @@ export default function HabitsSection({
         </div>
 
       </div>
+
+      {/* Custom Confirmation Modal bailing out iframe confirm() limitations */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" dir="rtl">
+          <div className={`w-full max-w-sm rounded-3xl p-5 border shadow-2xl transition-all scale-100 ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-zinc-200 text-slate-900'
+          }`}>
+            <div className="flex items-start gap-3 mb-4">
+              <span className="p-2 bg-indigo-500/10 text-indigo-500 rounded-xl">
+                <AlertTriangle size={20} className="animate-bounce text-indigo-505" />
+              </span>
+              <div>
+                <h4 className="text-sm font-black font-display leading-tight">{confirmModal.title}</h4>
+                <p className="text-[11px] text-slate-450 dark:text-slate-400 mt-2 leading-relaxed">{confirmModal.message}</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer border ${
+                  darkMode ? 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200 text-slate-700'
+                }`}
+              >
+                {confirmModal.cancelText || 'انصراف'}
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal({ ...confirmModal, isOpen: false });
+                }}
+                className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer border border-indigo-500 shadow-md shadow-indigo-650/15"
+              >
+                {confirmModal.confirmText || 'بله، تایید'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

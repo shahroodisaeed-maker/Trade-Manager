@@ -84,3 +84,110 @@ body {
 .animate-fade-in-up {
   animation: fadeInSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Scrollbar hiding helper */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* ==========================================
+   PERSISTENT MOBILE-FIRST DESIGN ENHANCEMENTS
+   ========================================== */
+@media (max-width: 768px) {
+  /* Increase tiny text elements on mobile for extreme readability and eye comfort */
+  .text-\[8px\], .text-\[9px\] {
+    font-size: 11px !important;
+  }
+  
+  .text-\[10px\], .text-\[11px\] {
+    font-size: 12px !important;
+  }
+  
+  .text-xs {
+    font-size: 13px !important;
+  }
+  
+  .text-sm {
+    font-size: 14px !important;
+  }
+  
+  .text-base {
+    font-size: 15px !important;
+  }
+
+  /* Make sure titles and display elements stand out beautifully */
+  h1, h2, h3, h4 {
+    letter-spacing: normal !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Enlarge touch targets on all interactive elements to at least 42px height */
+  button, a {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  /* Buttons should have more spacious touch targets */
+  .p-1 {
+    padding: 7px !important;
+  }
+  .p-1\.5 {
+    padding: 9px !important;
+  }
+  .px-1\.5 {
+    padding-left: 11px !important;
+    padding-right: 11px !important;
+  }
+  .p-2 {
+    padding: 10px !important;
+  }
+  
+  /* Forms, dropdowns and selection elements on mobile */
+  input[type="text"], 
+  input[type="number"], 
+  input[type="time"], 
+  input[type="date"], 
+  select, 
+  textarea {
+    padding: 11px 13px !important;
+    font-size: 13px !important;
+    border-radius: 12px !important;
+    line-height: 1.5 !important;
+    min-height: 42px !important;
+  }
+
+  /* Enlarge standard checkboxes and interactive tick squares */
+  input[type="checkbox"], 
+  .w-4.h-4 {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+  }
+
+  /* SVG Icons size upgrade inside interactive buttons for better visual cueing */
+  svg {
+    transform: scale(1.1) !important;
+  }
+
+  /* Cards and primary layouts on mobile should have elegant roomy breathing spaces */
+  .p-4, .p-5, .p-6 {
+    padding: 1.25rem !important;
+    border-radius: 20px !important;
+  }
+
+  .gap-4 {
+    gap: 1.25rem !important;
+  }
+
+  .grid {
+    gap: 1.25rem !important;
+  }
+}
+
