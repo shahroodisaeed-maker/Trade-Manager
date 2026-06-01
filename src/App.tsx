@@ -25,6 +25,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'journal' | 'focus' | 'financial' | 'habits' | 'ideas' | 'games' | 'settings'>('dashboard');
+  const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
 
   // Dark Mode State with localStorage persistence
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -430,6 +431,8 @@ export default function App() {
         console.log('Mobile persistence layer synchronized successfully!');
       } catch (err) {
         console.warn('Capacitor native storage preferences check bypassed:', err);
+      } finally {
+        setIsInitialLoadDone(true);
       }
     };
 
@@ -774,62 +777,73 @@ export default function App() {
 
   // Watchers to synchronize core databases to offline localStorage automatically
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.TRADES, JSON.stringify(trades));
     Preferences.set({ key: KEYS.TRADES, value: JSON.stringify(trades) }).catch(() => {});
-  }, [trades]);
+  }, [trades, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.TXS, JSON.stringify(transactions));
     Preferences.set({ key: KEYS.TXS, value: JSON.stringify(transactions) }).catch(() => {});
-  }, [transactions]);
+  }, [transactions, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.ASSETS, JSON.stringify(assets));
     Preferences.set({ key: KEYS.ASSETS, value: JSON.stringify(assets) }).catch(() => {});
-  }, [assets]);
+  }, [assets, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.LOANS, JSON.stringify(loans));
     Preferences.set({ key: KEYS.LOANS, value: JSON.stringify(loans) }).catch(() => {});
-  }, [loans]);
+  }, [loans, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.DEBT_CLAIMS, JSON.stringify(debtClaims));
     Preferences.set({ key: KEYS.DEBT_CLAIMS, value: JSON.stringify(debtClaims) }).catch(() => {});
-  }, [debtClaims]);
+  }, [debtClaims, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.HABITS, JSON.stringify(habits));
     Preferences.set({ key: KEYS.HABITS, value: JSON.stringify(habits) }).catch(() => {});
     syncHabitNotifications(habits);
-  }, [habits]);
+  }, [habits, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
     Preferences.set({ key: KEYS.TASKS, value: JSON.stringify(tasks) }).catch(() => {});
     syncTaskNotifications(tasks);
-  }, [tasks]);
+  }, [tasks, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.REMINDERS, JSON.stringify(reminders));
     Preferences.set({ key: KEYS.REMINDERS, value: JSON.stringify(reminders) }).catch(() => {});
     syncReminderNotifications(reminders);
-  }, [reminders]);
+  }, [reminders, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.IDEAS, JSON.stringify(ideas));
     Preferences.set({ key: KEYS.IDEAS, value: JSON.stringify(ideas) }).catch(() => {});
-  }, [ideas]);
+  }, [ideas, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.GAMES, JSON.stringify(games));
     Preferences.set({ key: KEYS.GAMES, value: JSON.stringify(games) }).catch(() => {});
-  }, [games]);
+  }, [games, isInitialLoadDone]);
 
   useEffect(() => {
+    if (!isInitialLoadDone) return;
     localStorage.setItem(KEYS.SERIALS, JSON.stringify(serials));
     Preferences.set({ key: KEYS.SERIALS, value: JSON.stringify(serials) }).catch(() => {});
-  }, [serials]);
+  }, [serials, isInitialLoadDone]);
 
   // Methods inside Journal
   const handleAddTrade = (newTrade: Omit<TradeLog, 'id'>) => {
@@ -1046,23 +1060,67 @@ export default function App() {
   };
 
   const handleImportAllData = (data: any) => {
-    if (data.trades) setTrades(data.trades);
-    if (data.transactions) setTransactions(data.transactions);
-    if (data.assets) setAssets(data.assets);
-    if (data.loans) setLoans(data.loans);
-    if (data.debtClaims) setDebtClaims(data.debtClaims);
-    if (data.habits) setHabits(data.habits);
-    if (data.tasks) {
-      setTasks(data.tasks);
-      syncTaskNotifications(data.tasks);
+    try {
+      if (data.trades) {
+        setTrades(data.trades);
+        localStorage.setItem(KEYS.TRADES, JSON.stringify(data.trades));
+        Preferences.set({ key: KEYS.TRADES, value: JSON.stringify(data.trades) }).catch(() => {});
+      }
+      if (data.transactions) {
+        setTransactions(data.transactions);
+        localStorage.setItem(KEYS.TXS, JSON.stringify(data.transactions));
+        Preferences.set({ key: KEYS.TXS, value: JSON.stringify(data.transactions) }).catch(() => {});
+      }
+      if (data.assets) {
+        setAssets(data.assets);
+        localStorage.setItem(KEYS.ASSETS, JSON.stringify(data.assets));
+        Preferences.set({ key: KEYS.ASSETS, value: JSON.stringify(data.assets) }).catch(() => {});
+      }
+      if (data.loans) {
+        setLoans(data.loans);
+        localStorage.setItem(KEYS.LOANS, JSON.stringify(data.loans));
+        Preferences.set({ key: KEYS.LOANS, value: JSON.stringify(data.loans) }).catch(() => {});
+      }
+      if (data.debtClaims) {
+        setDebtClaims(data.debtClaims);
+        localStorage.setItem(KEYS.DEBT_CLAIMS, JSON.stringify(data.debtClaims));
+        Preferences.set({ key: KEYS.DEBT_CLAIMS, value: JSON.stringify(data.debtClaims) }).catch(() => {});
+      }
+      if (data.habits) {
+        setHabits(data.habits);
+        localStorage.setItem(KEYS.HABITS, JSON.stringify(data.habits));
+        Preferences.set({ key: KEYS.HABITS, value: JSON.stringify(data.habits) }).catch(() => {});
+      }
+      if (data.tasks) {
+        setTasks(data.tasks);
+        localStorage.setItem(KEYS.TASKS, JSON.stringify(data.tasks));
+        Preferences.set({ key: KEYS.TASKS, value: JSON.stringify(data.tasks) }).catch(() => {});
+        syncTaskNotifications(data.tasks);
+      }
+      if (data.reminders) {
+        setReminders(data.reminders);
+        localStorage.setItem(KEYS.REMINDERS, JSON.stringify(data.reminders));
+        Preferences.set({ key: KEYS.REMINDERS, value: JSON.stringify(data.reminders) }).catch(() => {});
+        syncReminderNotifications(data.reminders);
+      }
+      if (data.ideas) {
+        setIdeas(data.ideas);
+        localStorage.setItem(KEYS.IDEAS, JSON.stringify(data.ideas));
+        Preferences.set({ key: KEYS.IDEAS, value: JSON.stringify(data.ideas) }).catch(() => {});
+      }
+      if (data.games) {
+        setGames(data.games);
+        localStorage.setItem(KEYS.GAMES, JSON.stringify(data.games));
+        Preferences.set({ key: KEYS.GAMES, value: JSON.stringify(data.games) }).catch(() => {});
+      }
+      if (data.serials) {
+        setSerials(data.serials);
+        localStorage.setItem(KEYS.SERIALS, JSON.stringify(data.serials));
+        Preferences.set({ key: KEYS.SERIALS, value: JSON.stringify(data.serials) }).catch(() => {});
+      }
+    } catch (err) {
+      console.error('Backup database import fail-safe failed:', err);
     }
-    if (data.reminders) {
-      setReminders(data.reminders);
-      syncReminderNotifications(data.reminders);
-    }
-    if (data.ideas) setIdeas(data.ideas);
-    if (data.games) setGames(data.games);
-    if (data.serials) setSerials(data.serials);
   };
 
   // Sidebar navigation mapping helper

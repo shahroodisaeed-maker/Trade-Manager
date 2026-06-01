@@ -43,6 +43,107 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
   const [selectedFocusGoal, setSelectedFocusGoal] = useState<string>('all'); // custom task id or manual goal
   const [customGoalText, setCustomGoalText] = useState('');
 
+  // Live custom focus tasks states for target setting and customizable minutes
+  interface CustomFocusTask {
+    id: string;
+    title: string;
+    minutes: number;
+    completed: boolean;
+    completedAt?: string;
+  }
+
+  const [customFocusTasks, setCustomFocusTasks] = useState<CustomFocusTask[]>(() => {
+    const saved = localStorage.getItem('zenith_custom_focus_tasks');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // ignore
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('zenith_custom_focus_tasks', JSON.stringify(customFocusTasks));
+  }, [customFocusTasks]);
+
+  const [newFocusTaskTitle, setNewFocusTaskTitle] = useState('');
+  const [newFocusTaskMinutes, setNewFocusTaskMinutes] = useState('25');
+
+  const handleAddCustomFocusTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    const titleClean = newFocusTaskTitle.trim();
+    if (!titleClean) return;
+    const minsNum = Number(newFocusTaskMinutes) || 25;
+    
+    const newTask: CustomFocusTask = {
+      id: 'f' + Date.now().toString(),
+      title: titleClean,
+      minutes: minsNum,
+      completed: false
+    };
+    
+    setCustomFocusTasks(prev => [...prev, newTask]);
+    
+    // Auto-select the newly added focus task
+    setSelectedFocusGoal(newTask.id);
+    
+    // Pre-load the timer for this custom duration!
+    setWorkDuration(minsNum);
+    setMinutes(minsNum);
+    setSeconds(0);
+    setIsActive(false);
+
+    setNewFocusTaskTitle('');
+  };
+
+  const handleArchiveCustomFocusTask = (id: string) => {
+    setCustomFocusTasks(prev => prev.map(t => {
+      if (t.id === id) {
+        return {
+          ...t,
+          completed: true,
+          completedAt: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString('fa-IR')
+        };
+      }
+      return t;
+    }));
+  };
+
+  const handleReactivateCustomFocusTask = (id: string) => {
+    const foundTask = customFocusTasks.find(t => t.id === id);
+    if (!foundTask) return;
+
+    // Create a brand new active task copy from the template of this completed task
+    const duplicateTask: CustomFocusTask = {
+      id: 'f' + Date.now().toString(),
+      title: foundTask.title,
+      minutes: foundTask.minutes,
+      completed: false
+    };
+
+    setCustomFocusTasks(prev => [...prev, duplicateTask]);
+    setSelectedFocusGoal(duplicateTask.id);
+    setWorkDuration(duplicateTask.minutes);
+    setMinutes(duplicateTask.minutes);
+    setSeconds(0);
+    setIsActive(false);
+  };
+
+  const handleDeleteCustomFocusTask = (id: string) => {
+    if (selectedFocusGoal === id) {
+      setSelectedFocusGoal('all');
+    }
+    setCustomFocusTasks(prev => prev.filter(t => t.id !== id));
+  };
+
+  const selectedGoalName = selectedFocusGoal === 'custom' 
+    ? (customGoalText || 'تمرکز اختصاصی') 
+    : (tasks.find(t => t.id === selectedFocusGoal)?.title || 
+       customFocusTasks.find(t => t.id === selectedFocusGoal)?.title ||
+       'کل کارنامه ترید و یادگیری مالی');
+
   // Web Audio Zen Ambient sound generator states
   const [ambientSound, setAmbientSound] = useState<'none' | 'pink_noise' | 'binaural_beats' | 'ocean_waves'>('none');
   const ambientAudioCtxRef = useRef<AudioContext | null>(null);
@@ -124,7 +225,18 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
               stopAmbientSound();
             }
             if (mode === 'work') {
-              alert('تبریک! مدت زمان تمرکز عمیق پومودورو به پایان رسید. حالا نوبت یک استراحت کوتاه است.');
+              // Auto-archive active custom focus task if one of ours is selected
+              setCustomFocusTasks(prev => prev.map(t => {
+                if (t.id === selectedFocusGoal && !t.completed) {
+                  return {
+                    ...t,
+                    completed: true,
+                    completedAt: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString('fa-IR')
+                  };
+                }
+                return t;
+              }));
+              alert(`تبریک! مدت زمان تمرکز عمیق پومودورو برای فعالیت "${selectedGoalName}" به پایان رسید. کار شما با موفقیت ثبت و بایگانی شد.`);
               handleModeSwitch('short');
             } else {
               alert('دوره استراحت به پایان رسید! آماده تمرکز مجدد روی اهداف معامله‌گری خود هستید؟');
@@ -142,7 +254,7 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
       clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [isActive, minutes, seconds]);
+  }, [isActive, minutes, seconds, selectedFocusGoal, selectedGoalName]);
 
   // Handle DND timer count-down if active
   useEffect(() => {
@@ -410,9 +522,6 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
   };
 
   const isCustomOptionPlaying = PREDEFINED_APPS[Number(selectedPresetIndex)]?.name === 'سایر برنامه‌ها ...';
-  const selectedGoalName = selectedFocusGoal === 'custom' 
-    ? (customGoalText || 'تمرکز اختصاصی') 
-    : (tasks.find(t => t.id === selectedFocusGoal)?.title || 'کل کارنامه ترید و یادگیری مالی');
 
   // Calculates percentage completion for progress bar
   const totalDurationSeconds = (mode === 'work' ? workDuration : mode === 'short' ? shortDuration : longDuration) * 60;
@@ -461,7 +570,17 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
               <label className="block text-[10px] text-slate-400 mb-1 font-semibold">بابت انجام چه وظیفه‌ای تمرکز می‌کنید؟</label>
               <select 
                 value={selectedFocusGoal}
-                onChange={(e) => setSelectedFocusGoal(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedFocusGoal(val);
+                  const foundTask = customFocusTasks.find(t => t.id === val);
+                  if (foundTask && !foundTask.completed) {
+                    setWorkDuration(foundTask.minutes);
+                    setMinutes(foundTask.minutes);
+                    setSeconds(0);
+                    setIsActive(false);
+                  }
+                }}
                 className={`w-full p-2 border rounded-lg text-xs leading-relaxed focus:outline-none focus:border-indigo-500 font-sans ${
                   darkMode ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-150 text-slate-850'
                 }`}
@@ -470,6 +589,9 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
                 <option value="custom">یک هدف سفارشی را تایپ می‌کنم ...</option>
                 {tasks.filter(t => !t.completed).map(t => (
                   <option key={t.id} value={t.id}>وظیفه: {t.title} ({t.time || 'امروز'})</option>
+                ))}
+                {customFocusTasks.filter(t => !t.completed).map(t => (
+                  <option key={t.id} value={t.id}>کار سفارشی: {t.title} ({t.minutes} دقیقه)</option>
                 ))}
               </select>
 
@@ -610,6 +732,23 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
               <RotateCcw size={15} />
             </button>
           </div>
+
+          {/* Quick manual archiving option right under the timer */}
+          {selectedFocusGoal && selectedFocusGoal.startsWith('f') && (
+            <button
+              onClick={() => {
+                handleArchiveCustomFocusTask(selectedFocusGoal);
+                setIsActive(false);
+                alert(`تبریک! فعالیت "${selectedGoalName}" با موفقیت به پایان رسید و مستقیماً به بخش کارهای بایگانی‌شده منتقل شد.`);
+                setSelectedFocusGoal('all');
+              }}
+              type="button"
+              className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/10 transition-all cursor-pointer"
+              title="اتمام زودهنگام و ثبت مستقیم در بایگانی بدون نیاز به منتظر ماندن برای پایان تایمر"
+            >
+              <Check size={14} /> اتمام زودهنگام و انتقال فوری به بایگانی
+            </button>
+          )}
 
           {/* Dynamic Ambient Synthesizer Box */}
           <div className={`p-3 rounded-xl border w-full text-right ${
@@ -917,6 +1056,220 @@ export default function FocusSection({ tasks = [], darkMode = false }: FocusSect
         </div>
 
       </div>
+
+      {/* PANEL 4: Custom Timed Focus Tasks Workshop & Archives */}
+      <div className={`p-6 border rounded-3xl shadow-sm space-y-6 transition-all ${
+        darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+      }`}>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b pb-4 border-slate-200/10 dark:border-slate-800/60 font-sans">
+          <div>
+            <h3 className={`text-sm font-bold flex items-center gap-1.5 font-display ${
+              darkMode ? 'text-slate-150' : 'text-slate-900'
+            }`}>
+              <Sparkles className="text-indigo-500 animate-spin-slow" size={16} />
+              کارگاه تعریف کارهای تمرکزی با زمان دلخواه (دقیقه) و بایگانی عملکرد
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-1 lines-relaxed leading-relaxed font-sans">
+              تریدرهای حرفه‌ای از زمان‌بندی دقیق برای هر کار تمرکزی استفاده می‌کنند. در اینجا هر تعداد کار با طول زمان دلخواه بسازید و پس از انجام به بایگانی ابدی بسپارید.
+            </p>
+          </div>
+          <span className="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 text-[10px] rounded-xl font-bold font-sans">
+            انجام شده‌ها: {customFocusTasks.filter(t => t.completed).length} کار
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
+          {/* Create custom focus task form (4 columns) */}
+          <form onSubmit={handleAddCustomFocusTask} className={`lg:col-span-4 p-4 rounded-2xl border space-y-4 ${
+            darkMode ? 'bg-slate-950/40 border-slate-850' : 'bg-slate-50 border-slate-150'
+          }`}>
+            <h4 className={`text-xs font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+              ➕ ساخت کار تمرکزی زمان‌دار جدید
+            </h4>
+            
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1 font-semibold">عنوان فعالیت تمرکزی *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: بک‌تست ۳ ماهه استراتژی ICT روی طلا"
+                  value={newFocusTaskTitle}
+                  onChange={(e) => setNewFocusTaskTitle(e.target.value)}
+                  className={`w-full p-2 border rounded-xl focus:outline-none focus:border-indigo-500 font-sans text-xs ${
+                    darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1 font-semibold">مدت زمان تمرکز تخصصی (دقیقه) *</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="480"
+                    value={newFocusTaskMinutes}
+                    onChange={(e) => setNewFocusTaskMinutes(e.target.value)}
+                    className={`w-24 p-2 text-center border rounded-xl focus:outline-none focus:border-indigo-500 font-mono text-xs ${
+                      darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                    }`}
+                  />
+                  <span className="text-[10px] text-slate-450">دقیقه</span>
+                </div>
+              </div>
+
+              <div className="p-2 border border-dashed border-indigo-500/10 rounded-xl text-[9px] text-indigo-400 leading-normal">
+                💡 با کلیک روی ثبت، کار جدید به لیست کارهای آماده اضافه شده و ساعت پومودورو نیز فوراً برای این مدت زمان تنظیم می‌گردد.
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2 bg-indigo-650 hover:bg-indigo-750 text-white font-bold rounded-xl transition-all cursor-pointer text-xs flex items-center justify-center gap-1 shadow-sm"
+              >
+                <Plus size={14} /> ایجاد و بارگذاری در ساعت
+              </button>
+            </div>
+          </form>
+
+          {/* List of custom focus tasks (8 columns) */}
+          <div className="lg:col-span-8 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Box A: Active/Pending Custom Tasks */}
+              <div className="space-y-2">
+                <h4 className={`text-xs font-bold flex items-center gap-1 ${darkMode ? 'text-slate-250' : 'text-slate-700'}`}>
+                  <span>⏳ کارهای زمان‌دار فعال</span>
+                  <span className="px-1.5 py-0.5 bg-indigo-600/15 text-indigo-400 text-[8px] rounded-full">
+                    {customFocusTasks.filter(t => !t.completed).length} کار باقیمانده
+                  </span>
+                </h4>
+
+                <div className="space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
+                  {customFocusTasks.filter(t => !t.completed).length === 0 ? (
+                    <div className="text-center p-8 border border-dashed border-slate-300/10 rounded-2xl text-slate-500 text-[10px] leading-relaxed">
+                      هیچ کار سفارشی فعالی وجود ندارد.
+                      <br />از فرم بغل یکی تعریف کنید تا روی ساعت قرار گیرد.
+                    </div>
+                  ) : (
+                    customFocusTasks.filter(t => !t.completed).map(t => (
+                      <div key={t.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2 transition-all ${
+                        selectedFocusGoal === t.id
+                          ? 'border-indigo-500/50 bg-indigo-500/5 shadow-md shadow-indigo-500/3'
+                          : (darkMode ? 'border-slate-800 bg-slate-950/20' : 'border-slate-150 bg-slate-50/50')
+                      }`}>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            {selectedFocusGoal === t.id && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" />}
+                            <span className={`font-semibold text-xs ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{t.title}</span>
+                          </div>
+                          <div className="text-[9px] text-slate-450 mt-1 font-bold flex items-center gap-1 font-mono">
+                            <Clock size={10} /> {t.minutes} دقیقه تمرکز عمیق
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {selectedFocusGoal !== t.id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFocusGoal(t.id);
+                                setWorkDuration(t.minutes);
+                                setMinutes(t.minutes);
+                                setSeconds(0);
+                                setIsActive(false);
+                              }}
+                              className={`p-1.5 px-2.5 rounded-lg text-[9px] font-bold cursor-pointer transition-colors ${
+                                darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-150 hover:bg-slate-200 text-slate-700'
+                              }`}
+                              title="بارگذاری روی ثانیه‌شمار"
+                            >
+                              🎯 بارگذاری
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleArchiveCustomFocusTask(t.id)}
+                            className="p-1.5 px-2.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 rounded-lg text-[9px] font-extrabold cursor-pointer transition-colors flex items-center gap-0.5"
+                            title="تکمیل و انتقال مستقیم به آرشیو"
+                          >
+                            <Check size={10} /> انجام شد
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomFocusTask(t.id)}
+                            className="p-1.5 text-slate-500 hover:text-rose-500 rounded-lg cursor-pointer transition-colors"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Box B: Archived/Completed Tasks */}
+              <div className="space-y-2">
+                <h4 className={`text-xs font-bold flex items-center gap-1 ${darkMode ? 'text-slate-250' : 'text-slate-700'}`}>
+                  <span>✅ کارهای اتمام‌یافته و بایگانی‌شده</span>
+                  <span className="px-1.5 py-0.5 bg-emerald-600/15 text-emerald-500 text-[8px] rounded-full">
+                    {customFocusTasks.filter(t => t.completed).length} اتمام‌یافته
+                  </span>
+                </h4>
+
+                <div className="space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
+                  {customFocusTasks.filter(t => t.completed).length === 0 ? (
+                    <div className="text-center p-8 border border-dashed border-slate-300/10 rounded-2xl text-slate-500 text-[10px] leading-relaxed font-sans">
+                      هنوز هیچ کار تمرکزی بایگانی نشده است.
+                      <br />با به پایان رسیدن تایمر یا کلیک روی دکمه انجام شد، کارها به این قسمت منتقل می‌شوند.
+                    </div>
+                  ) : (
+                    customFocusTasks.filter(t => t.completed).slice().reverse().map(t => (
+                      <div key={t.id} className={`p-2.5 border rounded-xl flex items-center justify-between gap-2 transition-all ${
+                        darkMode ? 'border-emerald-950/20 bg-emerald-950/5' : 'border-emerald-100 bg-emerald-50/20'
+                      }`}>
+                        <div>
+                          <div className="flex items-center gap-1">
+                            <Check size={11} className="text-emerald-500" />
+                            <span className="font-semibold text-xs text-slate-500 line-through decoration-slate-400/50">{t.title}</span>
+                          </div>
+                          <div className="text-[8px] text-slate-400 mt-1 flex items-center gap-1 font-sans">
+                            <span>⏱️ {t.minutes} دقیقه</span>
+                            <span>| 📅 {t.completedAt}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleReactivateCustomFocusTask(t.id)}
+                            className="p-1 px-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-[9px] font-bold cursor-pointer transition-colors flex items-center gap-0.5"
+                            title="استفاده مجدد و بازگردانی به کارهای فعال"
+                          >
+                            <RotateCcw size={10} /> شروع مجدد
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomFocusTask(t.id)}
+                            className="p-1 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition-colors"
+                            title="حذف از آرشیو"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }
